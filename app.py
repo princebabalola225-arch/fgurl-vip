@@ -61,7 +61,10 @@ def init_db():
     cursor.execute("PRAGMA table_info(transactions)")
     txn_cols = {row[1] for row in cursor.fetchall()}
     if "timestamp" not in txn_cols:
-        cursor.execute("ALTER TABLE transactions ADD COLUMN timestamp TEXT")
+        try:
+            cursor.execute("ALTER TABLE transactions ADD COLUMN timestamp TEXT")
+        except sqlite3.OperationalError:
+            pass  # another gunicorn worker already added it
     conn.commit()
     conn.close()
 
@@ -250,8 +253,11 @@ def serve_static(filename):
         return send_from_directory('.', filename)
     return jsonify({"message": "Not found"}), 404
 
+# Create/upgrade the database tables at startup. This runs both with
+# `python app.py` AND under gunicorn on Render (where __main__ never executes).
+init_db()
+
 if __name__ == '__main__':
-    init_db()
     # debug=True is DANGEROUS in production (exposes an interactive debugger).
     # Only enable it locally via FLASK_DEBUG=1; Render defaults it to off.
     debug_mode = os.environ.get("FLASK_DEBUG", "0") == "1"
