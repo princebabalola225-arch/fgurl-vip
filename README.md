@@ -21,7 +21,8 @@ Set these on Render (service → Environment) or locally before running:
 | `PAYSTACK_SECRET_KEY` | `sk_live_...` (or `sk_test_...` locally) | Server-side payment verification |
 | `PAYSTACK_PUBLIC_KEY` | `pk_live_...` (or `pk_test_...` locally) | Browser checkout key |
 | `PAYSTACK_SUBACCOUNT` | `ACCT_...` (optional) | Revenue split — leave EMPTY to take 100% |
-| `ADMIN_TOKEN` | any secret word | Unlocks `/admin.html` order monitor |
+| `ADMIN_TOKEN` | any secret word | Unlocks `/admin.html` (single admin) |
+| `ADMIN_TOKENS` | `tok1,tok2,tok3` | Comma-separated list for multiple admins |
 
 Get them from: Paystack Dashboard → Settings → API Keys & Webhooks.
 

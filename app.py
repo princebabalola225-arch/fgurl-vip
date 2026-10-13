@@ -27,6 +27,10 @@ PAYSTACK_SECRET_KEY = os.environ.get("PAYSTACK_SECRET_KEY", "sk_test_your_copied
 PAYSTACK_PUBLIC_KEY = os.environ.get("PAYSTACK_PUBLIC_KEY", "")
 PAYSTACK_SUBACCOUNT = os.environ.get("PAYSTACK_SUBACCOUNT", "")
 ADMIN_TOKEN = os.environ.get("ADMIN_TOKEN", "")
+# Support multiple admins: ADMIN_TOKENS="token1,token2,token3"
+ADMIN_TOKENS = {t.strip() for t in os.environ.get("ADMIN_TOKENS", "").split(",") if t.strip()}
+if ADMIN_TOKEN:
+    ADMIN_TOKENS.add(ADMIN_TOKEN)
 
 # VIP card tiers: price in Naira + validity in days
 VIP_TIER_PRICES = {"blue": 1500, "red": 3000, "yellow": 4500, "black": 6000}
@@ -316,7 +320,7 @@ def get_transactions():
 def admin_transactions():
     """Lists every order and VIP card. Locked behind the ADMIN_TOKEN env var."""
     token = request.args.get('token') or request.headers.get('X-Admin-Token') or ''
-    if not ADMIN_TOKEN or token != ADMIN_TOKEN:
+    if not ADMIN_TOKENS or token not in ADMIN_TOKENS:
         return jsonify({"message": "Unauthorized."}), 401
     conn = sqlite3.connect(DATABASE_FILE)
     conn.row_factory = sqlite3.Row
