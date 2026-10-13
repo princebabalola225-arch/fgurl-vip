@@ -45,15 +45,19 @@
         document.getElementById('outTotal').innerText = "₦" + totalPayable.toLocaleString();
 
         let paystackPublicKey = '';
+        let paystackSubaccount = '';
 
-        // Pull the PUBLIC key from the backend (set PAYSTACK_PUBLIC_KEY env var on Render)
+        // Pull the PUBLIC key (and optional subaccount) from the backend.
+        // Set PAYSTACK_SUBACCOUNT on the server, or leave it EMPTY to take 100%.
         async function loadPaystackConfig() {
             try {
                 const res = await fetch(`${BACKEND_URL}/api/config`);
                 const cfg = await res.json();
                 paystackPublicKey = cfg.paystack_public_key || '';
+                paystackSubaccount = cfg.paystack_subaccount || '';
             } catch (e) {
                 paystackPublicKey = '';
+                paystackSubaccount = '';
             }
             if (!paystackPublicKey || paystackPublicKey.includes('PASTE')) {
                 alert('Paystack public key is not configured yet. Set PAYSTACK_PUBLIC_KEY on the server.');
@@ -69,17 +73,12 @@
             const activeUser = localStorage.getItem('active_user') || 'guest';
             const simulatedEmail = `${activeUser}@fgurlvip.com`;
 
-            let handler = PaystackPop.setup({
+            const setupConfig = {
                 // LIVE public key is loaded from your server (no key hardcoded here)
                 key: paystackPublicKey,
                 email: simulatedEmail,
                 amount: totalPayable * 100,
                 currency: 'NGN',
-
-                // 🏦 SUBACCOUNT: confirm ACCT_rzai8uws45g8vg5 belongs to YOUR
-                // Paystack dashboard, or remove this line to take 100% yourself.
-                subaccount: 'ACCT_rzai8uws45g8vg5',
-
                 metadata: {
                     custom_fields: [
                         { display_name: "Customer Username", variable_name: "username", value: activeUser },
@@ -93,7 +92,14 @@
                 onClose: function() {
                     alert('Transaction cancelled.');
                 }
-            });
+            };
+            // Only route money through a subaccount if one is configured
+            // (and it belongs to YOUR Paystack dashboard).
+            if (paystackSubaccount) {
+                setupConfig.subaccount = paystackSubaccount;
+            }
+
+            let handler = PaystackPop.setup(setupConfig);
             handler.openIframe();
         }
 
@@ -101,13 +107,13 @@
             const payload = {
                 user: localStorage.getItem('active_user') || 'guest',
                 job_type: job,
-                actual_price: actual,
                 surcharge_rate: surchargeRate,
+                // Server recalculates the price from these raw parameters
+                params: JSON.parse(localStorage.getItem('checkout_params') || '{}'),
                 paystack_ref: referenceId
             };
 
             // Routes confirmation straight to your Render backend link
-            // BUG FIX: was pointing at https://onrender.com (the homepage)
             const response = await fetch(`${BACKEND_URL}/api/checkout-live`, {
                 method: 'POST',
                 headers: {'Content-Type': 'application/json'},

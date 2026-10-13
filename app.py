@@ -17,21 +17,26 @@ DATABASE_FILE = "database.db"
 app.config['MAX_CONTENT_LENGTH'] = 15 * 1024 * 1024
 
 # ---------------------------------------------------------------------------
-# PAYSTACK KEYS
-# Set these as ENVIRONMENT VARIABLES on Render (Render dashboard -> your
-# service -> Environment -> Add Environment Variable). Never hardcode the
-# SECRET key in the source code.
+# PAYSTACK SETTINGS — set these as ENVIRONMENT VARIABLES on Render:
 #   PAYSTACK_SECRET_KEY  = sk_live_...   (server-side verification key)
 #   PAYSTACK_PUBLIC_KEY  = pk_live_...   (sent to the browser for checkout)
+#   PAYSTACK_SUBACCOUNT  = ACCT_...      (optional - leave EMPTY to take 100%)
+#   ADMIN_TOKEN          = (any secret word) - unlocks the admin order page
 # ---------------------------------------------------------------------------
 PAYSTACK_SECRET_KEY = os.environ.get("PAYSTACK_SECRET_KEY", "sk_test_your_copied_secret_key_here")
 PAYSTACK_PUBLIC_KEY = os.environ.get("PAYSTACK_PUBLIC_KEY", "")
+PAYSTACK_SUBACCOUNT = os.environ.get("PAYSTACK_SUBACCOUNT", "")
+ADMIN_TOKEN = os.environ.get("ADMIN_TOKEN", "")
+
+# VIP card tiers: price in Naira + validity in days
+VIP_TIER_PRICES = {"blue": 1500, "red": 3000, "yellow": 4500, "black": 6000}
+VIP_TIER_VALIDITY_DAYS = {"blue": 30, "red": 90, "yellow": 180, "black": 365}
 
 # Only these files may be served to browsers. Everything else (database.db,
 # logins.txt, uploads/, app.py) stays private.
 STATIC_PAGES = {
     "VLAND.html", "dashboard.html", "jobs.html", "payment.html",
-    "renew.html", "VIP-CARD.html", "VLAND.css", "VLAND.js",
+    "renew.html", "VIP-CARD.html", "admin.html", "VLAND.css", "VLAND.js",
 }
 
 def init_db():
@@ -72,6 +77,52 @@ def get_json_body():
     # silent=True prevents a crash when a request has no/invalid JSON body
     return request.get_json(silent=True) or {}
 
+def verify_paystack_reference(paystack_ref):
+    """Confirm directly with Paystack that money landed. Returns the data dict, or None."""
+    paystack_verification_url = f"https://api.paystack.co/transaction/verify/{paystack_ref}"
+    headers = {"Authorization": f"Bearer {PAYSTACK_SECRET_KEY}"}
+    try:
+        response = requests.get(paystack_verification_url, headers=headers, timeout=15).json()
+    except Exception:
+        return None
+    if response.get('status') and response.get('data', {}).get('status') == 'success':
+        return response['data']
+    return None
+
+def log_payout(paystack_ref, username, total_price):
+    # NOTE: The real money split happens inside Paystack via the SUBACCOUNT
+    # percentage configured on the Paystack dashboard. The figures below are
+    # only a console/log report - they are NOT transfers executed by this code.
+    partner_share = 2200.00
+    your_share = 300.00
+    print("\n💰 --- FGURL VIP REAL-TIME CHECKOUT SPLIT COMPILATION ---")
+    print(f"Ref Token: [{paystack_ref}] | Account Profile: [{username}]")
+    print(f"Total Confirmed Revenue Received: ₦{total_price:,.2f}")
+    print(f"-> Automated Payout Sent to Partner Node: ₦{partner_share:,.2f}")
+    print(f"-> Your Dedicated Premium Payout (Oladele): ₦{your_share:,.2f} to 8065867966")
+    print("-------------------------------------------------------------\n")
+
+def compute_job_price(job_type, params):
+    """Server-side price calculation so clients cannot tamper with prices."""
+    try:
+        if job_type.startswith("Sticker"):
+            return float(params.get('w', 0)) * float(params.get('h', 0)) * 250
+        if job_type.startswith("Banner"):
+            return float(params.get('w', 0)) * float(params.get('h', 0)) * float(params.get('rate', 0))
+        if job_type.startswith("Mug"):
+            return float(params.get('unit', 0)) * float(params.get('qty', 0))
+        if job_type.startswith("Fixed"):
+            return float(params.get('price', 0))
+        if job_type.startswith("Typing"):
+            return float(params.get('rate', 0)) * float(params.get('pages', 0))
+    except (TypeError, ValueError):
+        return None
+    return None
+
+# Create/upgrade the database tables at startup. This runs both with
+# `python app.py` AND under gunicorn on Render (where __main__ never executes).
+init_db()
+
 @app.route('/api/register', methods=['POST'])
 def register():
     data = get_json_body()
@@ -101,7 +152,7 @@ def login():
     cursor.execute("SELECT password_hash FROM users WHERE username = ?", (username,))
     row = cursor.fetchone()
     conn.close()
-    # BUG FIX: fetchone() returns a tuple like (hash,), so we must use row[0]
+    # fetchone() returns a tuple like (hash,), so we must use row[0]
     if row and bcrypt.checkpw(password.encode('utf-8'), row[0].encode('utf-8')):
         current_time = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         with open("logins.txt", "a") as log_file:
@@ -119,23 +170,100 @@ def check_expiry():
     conn.close()
     if not row:
         return jsonify({"status": "active", "has_card": False}), 200
-    return jsonify({"status": "active", "has_card": True}), 200
+    tier, issue_date = row[0], row[1]
+    days = VIP_TIER_VALIDITY_DAYS.get(tier, 0)
+    try:
+        issued = datetime.datetime.strptime(issue_date[:16], "%Y-%m-%dT%H:%M")
+        expires = issued + datetime.timedelta(days=days)
+        if datetime.datetime.now() > expires:
+            return jsonify({"status": "expired", "has_card": True, "expires": str(expires)}), 200
+        return jsonify({"status": "active", "has_card": True, "expires": str(expires)}), 200
+    except (TypeError, ValueError):
+        return jsonify({"status": "active", "has_card": True}), 200
 
-@app.route('/api/create-vip', methods=['POST'])
-def create_vip():
+@app.route('/api/config', methods=['GET'])
+def paystack_config():
+    # Hand the PUBLIC key (and optional subaccount) to the browser.
+    # The SECRET key never leaves the server.
+    return jsonify({
+        "paystack_public_key": PAYSTACK_PUBLIC_KEY,
+        "paystack_subaccount": PAYSTACK_SUBACCOUNT
+    })
+
+@app.route('/api/checkout-live', methods=['POST'])
+def checkout_live():
+    data = get_json_body()
+    username = data.get('user')
+    job_type = data.get('job_type') or ''
+    surcharge_rate = float(data.get('surcharge_rate') or 0.25)
+    params = data.get('params') or {}
+    paystack_ref = data.get('paystack_ref')
+
+    # Server-side price calculation - the client-supplied price is ignored
+    actual_price = compute_job_price(job_type, params)
+    if actual_price is None:
+        return jsonify({"message": "Invalid job parameters supplied."}), 400
+    if not paystack_ref:
+        return jsonify({"message": "Missing payment reference."}), 400
+
+    # Security Verification: Confirms directly with Paystack cloud that money landed safely
+    payment_data = verify_paystack_reference(paystack_ref)
+    if not payment_data:
+        return jsonify({"message": "Verification parameters fraudulent or invalid."}), 400
+
+    # Make sure the customer actually paid the full amount (Paystack reports kobo)
+    paid_kobo = int(payment_data.get('amount') or 0)
+    expected_total = actual_price * (1 + surcharge_rate)
+    if paid_kobo + 50 < expected_total * 100:
+        return jsonify({"message": f"Underpayment detected. Expected ₦{expected_total:,.2f}."}), 400
+
+    vip_money = actual_price * surcharge_rate
+    total_price = actual_price + vip_money
+    timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+    conn = sqlite3.connect(DATABASE_FILE)
+    cursor = conn.cursor()
+    cursor.execute("""
+        INSERT INTO transactions (username, job_type, actual_price, vip_money, total_price, status, timestamp)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+    """, (username, job_type, actual_price, vip_money, total_price, "Payment Confirmed / Approved for Production", timestamp))
+    conn.commit()
+    conn.close()
+
+    log_payout(paystack_ref, username, total_price)
+    return jsonify({"message": f"Payment Verified! Total Processed: ₦{total_price:,.2f}."}), 200
+
+@app.route('/api/vip-checkout', methods=['POST'])
+def vip_checkout():
+    """Charge a real payment for a VIP card, then issue the card."""
     username = (request.form.get('username') or '').strip().lower()
     name = request.form.get('name')
     phone = request.form.get('phone')
     sex = request.form.get('sex')
     tier = request.form.get('tier')
     issue_date = request.form.get('issue_date')
+    paystack_ref = request.form.get('paystack_ref')
 
+    if tier not in VIP_TIER_PRICES:
+        return jsonify({"message": "Invalid VIP tier selected."}), 400
+    expected_naira = VIP_TIER_PRICES[tier]
+    if not paystack_ref:
+        return jsonify({"message": "Missing payment reference."}), 400
+
+    # Verify the money really landed in your Paystack account
+    payment_data = verify_paystack_reference(paystack_ref)
+    if not payment_data:
+        return jsonify({"message": "Payment not confirmed by Paystack. Please try again."}), 400
+
+    paid_kobo = int(payment_data.get('amount') or 0)
+    if paid_kobo + 50 < expected_naira * 100:
+        return jsonify({"message": f"Underpayment: ₦{expected_naira:,.0f} required for the {tier} plan."}), 400
+
+    # Save passport photograph
     passport = request.files.get('passport')
     if passport and passport.filename:
         os.makedirs("uploads", exist_ok=True)
         unique_suffix = int(time.time())
-        # BUG FIX: splitext returns a tuple; take index [1] for the extension,
-        # and sanitize the filename to block path-traversal attacks.
         file_extension = os.path.splitext(secure_filename(passport.filename))[1] or '.jpg'
         passport_name = f"{username}_{unique_suffix}_passport{file_extension}"
         passport.save(os.path.join("uploads", passport_name))
@@ -143,7 +271,6 @@ def create_vip():
     conn = sqlite3.connect(DATABASE_FILE)
     cursor = conn.cursor()
     cursor.execute("SELECT COUNT(*) FROM vip_cards")
-    # BUG FIX: fetchone() returns a tuple like (5,), so take [0] before +1
     count = cursor.fetchone()[0] + 1
     card_sequence_number = f"{count:03d}"
 
@@ -151,7 +278,6 @@ def create_vip():
     qr = qrcode.QRCode(version=1, box_size=10, border=5)
     qr.add_data(qr_data)
     qr.make(fit=True)
-
     qr_img = qr.make_image(fill_color="black", back_color="white")
     os.makedirs("uploads", exist_ok=True)
     qr_filename = f"uploads/{card_sequence_number}_qr.png"
@@ -162,72 +288,18 @@ def create_vip():
         INSERT INTO vip_cards (card_id, username, name, phone, sex, tier, issue_date, qr_path)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
     """, (card_sequence_number, username, name, phone, sex, tier, issue_date, qr_filename))
+
+    timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    cursor.execute("""
+        INSERT INTO transactions (username, job_type, actual_price, vip_money, total_price, status, timestamp)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+    """, (username, f"VIP Card ({tier})", expected_naira, 0.0, expected_naira,
+          "Payment Confirmed / Approved for Production", timestamp))
     conn.commit()
     conn.close()
-    return jsonify({"message": f"Successfully mapped FGURL VIP Card #{card_sequence_number}"}), 200
 
-@app.route('/api/config', methods=['GET'])
-def paystack_config():
-    # Hand the PUBLIC key to the browser. The SECRET key never leaves the server.
-    return jsonify({"paystack_public_key": PAYSTACK_PUBLIC_KEY})
-
-@app.route('/api/checkout-live', methods=['POST'])
-def checkout_live():
-    data = get_json_body()
-    username = data.get('user')
-    job_type = data.get('job_type')
-    try:
-        actual_price = float(data.get('actual_price'))
-    except (TypeError, ValueError):
-        return jsonify({"message": "Invalid price supplied."}), 400
-    surcharge_rate = float(data.get('surcharge_rate') or 0.25)
-    paystack_ref = data.get('paystack_ref')
-    if not paystack_ref:
-        return jsonify({"message": "Missing payment reference."}), 400
-
-    # Security Verification: Confirms directly with Paystack cloud that money landed safely
-    # BUG FIX: the verification endpoint is api.paystack.co/transaction/verify/<ref>
-    paystack_verification_url = f"https://api.paystack.co/transaction/verify/{paystack_ref}"
-    headers = {
-        # Uses the LIVE secret key from the PAYSTACK_SECRET_KEY environment variable
-        "Authorization": f"Bearer {PAYSTACK_SECRET_KEY}"
-    }
-
-    try:
-        response = requests.get(paystack_verification_url, headers=headers, timeout=15).json()
-    except Exception:
-        return jsonify({"message": "Error verification network connection dropout."}), 500
-
-    if response.get('status') and response.get('data', {}).get('status') == 'success':
-        vip_money = actual_price * surcharge_rate
-        total_price = actual_price + vip_money
-        timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-
-        # NOTE: The actual money split happens inside Paystack via the SUBACCOUNT
-        # percentage configured on the Paystack dashboard. The figures below are
-        # only a console/log report - they are NOT transfers executed by this code.
-        partner_share = 2200.00
-        your_share = 300.00
-
-        conn = sqlite3.connect(DATABASE_FILE)
-        cursor = conn.cursor()
-        cursor.execute("""
-            INSERT INTO transactions (username, job_type, actual_price, vip_money, total_price, status, timestamp)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
-        """, (username, job_type, actual_price, vip_money, total_price, "Payment Confirmed / Approved for Production", timestamp))
-        conn.commit()
-        conn.close()
-
-        # Cloud console payout log reporting format
-        print("\n💰 --- FGURL VIP REAL-TIME CHECKOUT SPLIT COMPILATION ---")
-        print(f"Ref Token: [{paystack_ref}] | Account Profile: [{username}]")
-        print(f"Total Confirmed Revenue Received: ₦{total_price:,.2f}")
-        print(f"-> Automated Payout Sent to Partner Node: ₦{partner_share:,.2f}")
-        print(f"-> Your Dedicated Premium Payout (Oladele): ₦{your_share:,.2f} to 8065867966")
-        print("-------------------------------------------------------------\n")
-        return jsonify({"message": f"Payment Verified! Total Processed: ₦{total_price:,.2f}."}), 200
-    else:
-        return jsonify({"message": "Verification parameters fraudulent or invalid."}), 400
+    log_payout(paystack_ref, username, expected_naira)
+    return jsonify({"message": f"Payment Verified! FGURL VIP Card #{card_sequence_number} ({tier}) is now active."}), 200
 
 @app.route('/api/transactions', methods=['GET'])
 def get_transactions():
@@ -239,6 +311,22 @@ def get_transactions():
     rows = cursor.fetchall()
     conn.close()
     return jsonify([dict(ix) for ix in rows])
+
+@app.route('/api/admin/transactions', methods=['GET'])
+def admin_transactions():
+    """Lists every order and VIP card. Locked behind the ADMIN_TOKEN env var."""
+    token = request.args.get('token') or request.headers.get('X-Admin-Token') or ''
+    if not ADMIN_TOKEN or token != ADMIN_TOKEN:
+        return jsonify({"message": "Unauthorized."}), 401
+    conn = sqlite3.connect(DATABASE_FILE)
+    conn.row_factory = sqlite3.Row
+    cursor = conn.cursor()
+    cursor.execute("SELECT id, username, job_type, total_price, status, timestamp FROM transactions ORDER BY id DESC LIMIT 200")
+    txns = [dict(r) for r in cursor.fetchall()]
+    cursor.execute("SELECT card_id, username, name, phone, tier, issue_date FROM vip_cards ORDER BY card_id DESC")
+    cards = [dict(r) for r in cursor.fetchall()]
+    conn.close()
+    return jsonify({"transactions": txns, "vip_cards": cards})
 
 # ---------------------------------------------------------------------------
 # Serve the frontend pages (Render only runs what app.py exposes)
@@ -252,10 +340,6 @@ def serve_static(filename):
     if filename in STATIC_PAGES:
         return send_from_directory('.', filename)
     return jsonify({"message": "Not found"}), 404
-
-# Create/upgrade the database tables at startup. This runs both with
-# `python app.py` AND under gunicorn on Render (where __main__ never executes).
-init_db()
 
 if __name__ == '__main__':
     # debug=True is DANGEROUS in production (exposes an interactive debugger).

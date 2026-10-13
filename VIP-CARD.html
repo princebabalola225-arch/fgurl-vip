@@ -46,6 +46,24 @@
         // Auto-detects the server: works locally (127.0.0.1:5000) and on Render
         const BACKEND_URL = window.location.origin;
 
+        // VIP tier prices (must match the server)
+        const TIER_PRICES = { blue: 1500, red: 3000, yellow: 4500, black: 6000 };
+
+        let paystackPublicKey = '';
+        let paystackSubaccount = '';
+
+        async function loadPaystackConfig() {
+            try {
+                const res = await fetch(`${BACKEND_URL}/api/config`);
+                const cfg = await res.json();
+                paystackPublicKey = cfg.paystack_public_key || '';
+                paystackSubaccount = cfg.paystack_subaccount || '';
+            } catch (e) {
+                paystackPublicKey = '';
+            }
+        }
+        loadPaystackConfig();
+
         const now = new Date();
         now.setMinutes(now.getMinutes() - now.getTimezoneOffset());
         document.getElementById('issueDate').value = now.toISOString().slice(0,16);
@@ -61,6 +79,14 @@
             const fileInput = document.getElementById('passportFile');
             const msg = document.getElementById('msg');
             const saveBtn = document.getElementById('saveBtn');
+            const tier = document.getElementById('cardTier').value;
+            const amount = TIER_PRICES[tier];
+
+            if (!paystackPublicKey) {
+                msg.className = "message error";
+                msg.innerText = "Payment gateway is not ready. Please contact support.";
+                return;
+            }
 
             if(fileInput.files[0].size > 15 * 1024 * 1024) {
                 msg.className = "message error";
@@ -68,31 +94,67 @@
                 return;
             }
 
+            const activeUser = localStorage.getItem('active_user') || 'guest';
+
             saveBtn.disabled = true;
-            saveBtn.innerHTML = `<span class="spinner"></span> Compiling Assets...`;
+            saveBtn.innerHTML = `<span class="spinner"></span> Opening secure payment...`;
 
-            const formData = new FormData();
-            formData.append('username', localStorage.getItem('active_user') || 'guest');
-            formData.append('name', document.getElementById('vipName').value);
-            formData.append('phone', document.getElementById('vipPhone').value);
-            formData.append('sex', document.getElementById('vipSex').value);
-            formData.append('tier', document.getElementById('cardTier').value);
-            formData.append('issue_date', document.getElementById('issueDate').value);
-            formData.append('passport', fileInput.files[0]);
+            const setupConfig = {
+                key: paystackPublicKey,
+                email: `${activeUser}@fgurlvip.com`,
+                amount: amount * 100,
+                currency: 'NGN',
+                metadata: {
+                    custom_fields: [
+                        { display_name: "Customer Username", variable_name: "username", value: activeUser },
+                        { display_name: "VIP Tier", variable_name: "tier", value: tier }
+                    ]
+                },
+                callback: function(response) {
+                    finalizePurchase(response.reference);
+                },
+                onClose: function() {
+                    alert('Payment cancelled.');
+                    saveBtn.disabled = false;
+                    saveBtn.innerText = "Save Info & Purchase";
+                }
+            };
+            if (paystackSubaccount) {
+                setupConfig.subaccount = paystackSubaccount;
+            }
 
-            const response = await fetch(`${BACKEND_URL}/api/create-vip`, {
-                method: 'POST',
-                body: formData
-            });
-            
-            if (response.ok) {
-                alert("VIP Credentials Saved Successfully!");
-                localStorage.setItem('vip_reminder_active', 'false');
-                window.location.href = 'dashboard.html';
-            } else {
-                alert("Failed to build identity structure cards.");
-                saveBtn.disabled = false;
-                saveBtn.innerText = "Save Info & Purchase";
+            // Launch real Paystack payment for the tier price
+            let handler = PaystackPop.setup(setupConfig);
+            handler.openIframe();
+
+            async function finalizePurchase(paystack_ref) {
+                saveBtn.innerHTML = `<span class="spinner"></span> Verifying payment...`;
+                const formData = new FormData();
+                formData.append('username', activeUser);
+                formData.append('name', document.getElementById('vipName').value);
+                formData.append('phone', document.getElementById('vipPhone').value);
+                formData.append('sex', document.getElementById('vipSex').value);
+                formData.append('tier', tier);
+                formData.append('issue_date', document.getElementById('issueDate').value);
+                formData.append('paystack_ref', paystack_ref);
+                formData.append('passport', fileInput.files[0]);
+
+                const response = await fetch(`${BACKEND_URL}/api/vip-checkout`, {
+                    method: 'POST',
+                    body: formData
+                });
+
+                if (response.ok) {
+                    const data = await response.json();
+                    alert(data.message);
+                    localStorage.setItem('vip_reminder_active', 'false');
+                    window.location.href = 'dashboard.html';
+                } else {
+                    const data = await response.json().catch(() => ({}));
+                    alert(data.message || "Payment could not be confirmed.");
+                    saveBtn.disabled = false;
+                    saveBtn.innerText = "Save Info & Purchase";
+                }
             }
         });
     </script>

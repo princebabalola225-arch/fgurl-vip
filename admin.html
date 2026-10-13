@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FGURL VIP | Admin Order Center</title>
+    <link rel="stylesheet" href="VLAND.css">
+    <style>
+        table { width: 100%; border-collapse: collapse; font-size: 14px; }
+        th, td { padding: 10px; border: 1px solid #e2e8f0; text-align: left; }
+        th { background: #edf2f7; }
+    </style>
+</head>
+<body>
+    <nav class="navbar">
+        <h2>FGURL VIP — Admin Order Center</h2>
+        <ul class="nav-links">
+            <li><a href="VLAND.html">Main Site</a></li>
+        </ul>
+    </nav>
+
+    <div class="container">
+        <div class="job-card">
+            <h2>🔐 Orders &amp; VIP Cards Monitor</h2>
+            <p style="color:#718096; font-size:14px; margin:10px 0;">
+                This page shows every payment and VIP card in real time.
+                You need your <strong>ADMIN_TOKEN</strong> (set on the server) to enter.
+            </p>
+            <div style="display:flex; gap:10px; margin:15px 0;">
+                <input type="password" id="adminToken" placeholder="Admin token" class="input-field" style="flex:1;">
+                <button class="btn" onclick="loadAdminData()">Load Orders</button>
+            </div>
+            <p id="adminMsg" class="message"></p>
+            <p id="autoRefresh" style="display:none; font-size:13px; color:#666;">
+                🔄 Auto-refreshing every 15 seconds — <a href="#" onclick="stopRefresh(); return false;">stop</a>
+            </p>
+        </div>
+
+        <div class="job-card" style="margin-top:20px;">
+            <h3>💰 Payments / Orders</h3>
+            <div class="table-container" id="txnTable" style="margin-top:10px;">
+                <p style="color:#999;">No data loaded yet.</p>
+            </div>
+        </div>
+
+        <div class="job-card" style="margin-top:20px;">
+            <h3>💳 VIP Cards Issued</h3>
+            <div class="table-container" id="cardTable" style="margin-top:10px;">
+                <p style="color:#999;">No data loaded yet.</p>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Auto-detects the server: works locally (127.0.0.1:5000) and on Render
+        const BACKEND_URL = window.location.origin;
+        let refreshTimer = null;
+        let savedToken = '';
+
+        function esc(s) {
+            return String(s == null ? '' : s)
+                .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;');
+        }
+
+        async function loadAdminData() {
+            const tokenInput = document.getElementById('adminToken');
+            const token = (tokenInput && tokenInput.value.trim()) || savedToken;
+            if (!token) {
+                document.getElementById('adminMsg').innerText = 'Enter your admin token.';
+                return;
+            }
+            savedToken = token;
+            const msg = document.getElementById('adminMsg');
+            msg.innerText = 'Loading...';
+            try {
+                const res = await fetch(`${BACKEND_URL}/api/admin/transactions?token=${encodeURIComponent(token)}`);
+                const data = await res.json();
+                if (!res.ok) {
+                    msg.innerText = data.message || 'Unauthorized.';
+                    return;
+                }
+                msg.innerText = `Last updated: ${new Date().toLocaleTimeString()}`;
+                renderTables(data);
+                document.getElementById('autoRefresh').style.display = 'block';
+                clearInterval(refreshTimer);
+                refreshTimer = setInterval(loadAdminData, 15000);
+            } catch (e) {
+                msg.innerText = 'Cannot reach server.';
+            }
+        }
+
+        function stopRefresh() {
+            clearInterval(refreshTimer);
+            document.getElementById('autoRefresh').style.display = 'none';
+        }
+
+        function renderTables(data) {
+            const txns = data.transactions || [];
+            if (txns.length) {
+                let out = `<table>
+                    <tr><th>#</th><th>User</th><th>Order</th><th>Total</th><th>Status</th><th>Time</th></tr>`;
+                txns.forEach(t => {
+                    out += `<tr>
+                        <td><strong>${String(t.id).padStart(4, '0')}</strong></td>
+                        <td>${esc(t.username)}</td>
+                        <td>${esc(t.job_type)}</td>
+                        <td>₦${Number(t.total_price || 0).toLocaleString()}</td>
+                        <td style="color:${String(t.status || '').includes('Confirmed') ? 'green' : '#dd6b20'};">${esc(t.status)}</td>
+                        <td>${esc(t.timestamp)}</td>
+                    </tr>`;
+                });
+                out += '</table>';
+                document.getElementById('txnTable').innerHTML = out;
+            } else {
+                document.getElementById('txnTable').innerHTML = '<p>No orders yet.</p>';
+            }
+
+            const cards = data.vip_cards || [];
+            if (cards.length) {
+                let out = `<table>
+                    <tr><th>Card</th><th>User</th><th>Name</th><th>Phone</th><th>Tier</th><th>Issued</th></tr>`;
+                cards.forEach(c => {
+                    out += `<tr>
+                        <td><strong>#${String(c.card_id).padStart(3, '0')}</strong></td>
+                        <td>${esc(c.username)}</td>
+                        <td>${esc(c.name)}</td>
+                        <td>${esc(c.phone)}</td>
+                        <td>${esc(c.tier)}</td>
+                        <td>${esc(c.issue_date)}</td>
+                    </tr>`;
+                });
+                out += '</table>';
+                document.getElementById('cardTable').innerHTML = out;
+            } else {
+                document.getElementById('cardTable').innerHTML = '<p>No VIP cards issued yet.</p>';
+            }
+        }
+    </script>
+</body>
+</html>

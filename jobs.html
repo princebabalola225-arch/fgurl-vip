@@ -145,10 +145,13 @@
     </div>
 
     <script>
-        function routeToCheckout(jobType, actualPrice, surchargeRate) {
+        function routeToCheckout(jobType, actualPrice, surchargeRate, params) {
             localStorage.setItem('checkout_job', jobType);
             localStorage.setItem('checkout_actual_price', actualPrice);
             localStorage.setItem('checkout_surcharge_rate', surchargeRate);
+            // Raw parameters are sent to the server, which recalculates the
+            // price itself so clients cannot tamper with the amount.
+            localStorage.setItem('checkout_params', JSON.stringify(params || {}));
             window.location.href = 'payment.html';
         }
 
@@ -167,7 +170,7 @@
                     FGURL VIP Urgency Charge: ₦${vipCharge.toLocaleString()}<br>
                     <strong>Total Payable: ₦${total.toLocaleString()}</strong>
                 </div>
-                <button class="btn" style="background:green;" onclick="routeToCheckout('Sticker Job (${w}x${h} ft)', ${baseCost}, ${surchargeRate})">Proceed to Payment Gateway</button>
+                <button class="btn" style="background:green;" onclick="routeToCheckout('Sticker Job (${w}x${h} ft)', ${baseCost}, ${surchargeRate}, {w: ${w}, h: ${h}})">Proceed to Payment Gateway</button>
             `;
         }
 
@@ -185,7 +188,7 @@
                     Base Price: ₦${baseCost.toLocaleString()}<br>
                     <strong>Total Payable: ₦${total.toLocaleString()}</strong>
                 </div>
-                <button class="btn" style="background:green;" onclick="routeToCheckout('Banner/Flex Job (${w}x${h} ft)', ${baseCost}, 0)">Proceed to Payment Gateway</button>
+                <button class="btn" style="background:green;" onclick="routeToCheckout('Banner/Flex Job (${w}x${h} ft)', ${baseCost}, 0, {w: ${w}, h: ${h}, rate: ${tierRate}})">Proceed to Payment Gateway</button>
             `;
         }
 
@@ -204,7 +207,7 @@
                     FGURL VIP Urgency Charge: ₦${vipCharge.toLocaleString()}<br>
                     <strong>Total Payable: ₦${total.toLocaleString()}</strong>
                 </div>
-                <button class="btn" style="background:green;" onclick="routeToCheckout('Mug Cup Job (${qty} units)', ${baseCost}, ${surchargeRate})">Proceed to Payment Gateway</button>
+                <button class="btn" style="background:green;" onclick="routeToCheckout('Mug Cup Job (${qty} units)', ${baseCost}, ${surchargeRate}, {unit: ${unitPrice}, qty: ${qty}})">Proceed to Payment Gateway</button>
             `;
         }
 
@@ -221,7 +224,7 @@
                     FGURL VIP Urgency Charge: ₦${vipCharge.toLocaleString()}<br>
                     <strong>Total Payable: ₦${total.toLocaleString()}</strong>
                 </div>
-                <button class="btn" style="background:green;" onclick="routeToCheckout('Fixed Printout Job', ${baseCost}, ${surchargeRate})">Proceed to Payment Gateway</button>
+                <button class="btn" style="background:green;" onclick="routeToCheckout('Fixed Printout Job', ${baseCost}, ${surchargeRate}, {price: ${baseCost}})">Proceed to Payment Gateway</button>
             `;
         }
 
@@ -240,7 +243,7 @@
                     FGURL VIP Urgency Charge: ₦${vipCharge.toLocaleString()}<br>
                     <strong>Total Payable: ₦${total.toLocaleString()}</strong>
                 </div>
-                <button class="btn" style="background:green;" onclick="routeToCheckout('Typing/Printing Job (${pages} pages)', ${baseCost}, ${surchargeRate})">Proceed to Payment Gateway</button>
+                <button class="btn" style="background:green;" onclick="routeToCheckout('Typing/Printing Job (${pages} pages)', ${baseCost}, ${surchargeRate}, {rate: ${perPageRate}, pages: ${pages}})">Proceed to Payment Gateway</button>
             `;
         }
     </script>
