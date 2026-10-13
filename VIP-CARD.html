@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>VIP Matrix Enrollment</title>
+    <link rel="stylesheet" href="VLAND.css">
+</head>
+<body>
+    <div class="container" style="max-width: 500px;">
+        <div class="job-card" style="text-align: center;">
+            <h1 style="color: var(--primary); font-size: 24px;">GET OUR VIP CARD</h1>
+            <p style="margin-bottom: 20px; font-weight: bold; color: #555;">GAIN ACCESS</p>
+            
+            <form id="vipForm">
+                <input type="text" id="vipName" placeholder="Full Name" class="input-field" required>
+                <input type="tel" id="vipPhone" placeholder="Phone Number" class="input-field" required>
+                
+                <select id="vipSex" class="input-field" required>
+                    <option value="">Select Sex</option>
+                    <option value="Male">Male</option>
+                    <option value="Female">Female</option>
+                </select>
+
+                <select id="cardTier" class="input-field" required>
+                    <option value="blue">Blue Tag (₦1,500 - 1 Month Validity)</option>
+                    <option value="red">Red Tag (₦3,000 - 3 Months Validity)</option>
+                    <option value="yellow">Yellow Tag (₦4,500 - 6 Months Validity)</option>
+                    <option value="black">Black Tag (₦6,000 - 1 Year Validity)</option>
+                </select>
+
+                <label style="text-align: left; display: block; font-size: 14px; margin-bottom: 5px;">Issue Date</label>
+                <input type="datetime-local" id="issueDate" class="input-field" required>
+
+                <label style="text-align: left; display: block; font-size: 14px; margin-bottom: 5px;">Upload Passport Photograph (Max 15MB)</label>
+                <input type="file" id="passportFile" accept="image/*" class="input-field" required>
+
+                <button type="submit" id="saveBtn" class="btn">Save Info & Purchase</button>
+                <button type="button" id="notNowBtn" class="btn" style="background:#edf2f7; color:#4a5568; margin-top:10px;">Not Now</button>
+                <p id="msg" class="message"></p>
+            </form>
+        </div>
+    </div>
+
+    <script>
+        // Auto-detects the server: works locally (127.0.0.1:5000) and on Render
+        const BACKEND_URL = window.location.origin;
+
+        const now = new Date();
+        now.setMinutes(now.getMinutes() - now.getTimezoneOffset());
+        document.getElementById('issueDate').value = now.toISOString().slice(0,16);
+
+        document.getElementById('notNowBtn').addEventListener('click', () => {
+            localStorage.setItem('vip_reminder_active', 'true');
+            localStorage.setItem('vip_timer_start', Date.now());
+            window.location.href = 'dashboard.html';
+        });
+
+        document.getElementById('vipForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const fileInput = document.getElementById('passportFile');
+            const msg = document.getElementById('msg');
+            const saveBtn = document.getElementById('saveBtn');
+
+            if(fileInput.files[0].size > 15 * 1024 * 1024) {
+                msg.className = "message error";
+                msg.innerText = "Error: File size limits exceeded (Max 15MB).";
+                return;
+            }
+
+            saveBtn.disabled = true;
+            saveBtn.innerHTML = `<span class="spinner"></span> Compiling Assets...`;
+
+            const formData = new FormData();
+            formData.append('username', localStorage.getItem('active_user') || 'guest');
+            formData.append('name', document.getElementById('vipName').value);
+            formData.append('phone', document.getElementById('vipPhone').value);
+            formData.append('sex', document.getElementById('vipSex').value);
+            formData.append('tier', document.getElementById('cardTier').value);
+            formData.append('issue_date', document.getElementById('issueDate').value);
+            formData.append('passport', fileInput.files[0]);
+
+            const response = await fetch(`${BACKEND_URL}/api/create-vip`, {
+                method: 'POST',
+                body: formData
+            });
+            
+            if (response.ok) {
+                alert("VIP Credentials Saved Successfully!");
+                localStorage.setItem('vip_reminder_active', 'false');
+                window.location.href = 'dashboard.html';
+            } else {
+                alert("Failed to build identity structure cards.");
+                saveBtn.disabled = false;
+                saveBtn.innerText = "Save Info & Purchase";
+            }
+        });
+    </script>
+</body>
+</html>

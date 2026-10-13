@@ -1,0 +1,172 @@
+/* Smartphone-First Responsive Stylesheet */
+:root {
+    --primary: #667eea;
+    --primary-hover: #5a67d8;
+    --dark-bg: #121214;
+    --card-bg: #ffffff;
+    --text-main: #333333;
+    --text-muted: #718096;
+    --border-color: #cbd5e0;
+    --success: #2f855a;
+    --error: #c53030;
+    --warning: #dd6b20;
+}
+
+* {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+    font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+}
+
+body {
+    background-color: #f7fafc;
+    color: var(--text-main);
+    min-height: 100vh;
+}
+
+.auth-wrapper {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 100vh;
+    background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+    padding: 20px;
+}
+
+/* 📱 Smartphone Responsive Navigation Bar */
+.navbar {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 12px;
+    background: var(--dark-bg);
+    padding: 15px;
+    color: white;
+    text-align: center;
+}
+
+.nav-links {
+    display: flex;
+    list-style: none;
+    gap: 15px;
+    width: 100%;
+    justify-content: space-around;
+    overflow-x: auto;
+    padding-bottom: 5px;
+}
+
+.nav-links a {
+    color: #cbd5e0;
+    text-decoration: none;
+    font-weight: 600;
+    font-size: 15px;
+    padding: 8px 12px;
+    border-radius: 6px;
+    white-space: nowrap;
+}
+
+.nav-links a:hover, .nav-links a.active {
+    color: white;
+    background: var(--primary);
+}
+
+/* Structural Grid Configurations */
+.container {
+    width: 92%;
+    max-width: 1200px;
+    margin: 20px auto;
+}
+
+.jobs-grid {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 20px;
+}
+
+.job-card {
+    background: var(--card-bg);
+    padding: 22px;
+    border-radius: 12px;
+    box-shadow: 0 4px 15px rgba(0,0,0,0.05);
+    margin-bottom: 15px;
+}
+
+/* Modern Input Target Elements */
+.input-group {
+    position: relative;
+    margin-bottom: 20px;
+    text-align: left;
+}
+
+.input-field, select, .input-group input {
+    width: 100%;
+    padding: 14px;
+    border: 2px solid var(--border-color);
+    border-radius: 8px;
+    outline: none;
+    font-size: 16px;
+    background: #fff;
+}
+
+.input-field:focus, select:focus, .input-group input:focus {
+    border-color: var(--primary);
+}
+
+.input-group label {
+    position: absolute;
+    left: 14px;
+    top: 50%;
+    transform: translateY(-50%);
+    color: #aaa;
+    pointer-events: none;
+    transition: 0.3s;
+    background: #fff;
+    padding: 0 4px;
+}
+
+.input-group input:focus + label,
+.input-group input:not(:placeholder-shown) + label {
+    top: 0;
+    font-size: 12px;
+    color: var(--primary);
+}
+
+.btn {
+    width: 100%;
+    padding: 15px;
+    background: var(--primary);
+    color: white;
+    border: none;
+    border-radius: 8px;
+    font-size: 16px;
+    font-weight: bold;
+    cursor: pointer;
+    touch-action: manipulation;
+}
+
+.btn:hover { background: var(--primary-hover); }
+.row-inputs { display: flex; gap: 10px; }
+
+/* Spinners, Banners, and Tables */
+.spinner {
+    display: inline-block; width: 20px; height: 20px; border: 3px solid rgba(255,255,255,0.3);
+    border-radius: 50%; border-top-color: #fff; animation: spin 1s infinite linear; margin-right: 10px;
+    vertical-align: middle;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+.reminder-banner { background: #fffff0; border-left: 5px solid var(--warning); padding: 15px; margin-bottom: 20px; border-radius: 8px; display: none; }
+.table-container { width: 100%; overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; min-width: 500px; background: white; }
+th, td { padding: 14px; border-bottom: 1px solid #e2e8f0; text-align: left; font-size: 15px; }
+
+.message { margin-top: 15px; font-size: 14px; font-weight: 600; }
+.success { color: var(--success); }
+.error { color: var(--error); }
+
+@media (min-width: 768px) {
+    .navbar { flex-direction: row; justify-content: space-between; padding: 15px 5%; }
+    .nav-links { width: auto; gap: 20px; }
+    .jobs-grid { grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap: 25px; }
+}

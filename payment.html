@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FGURL VIP | Secure Settlement Gateway</title>
+    <!-- BUG FIX: stylesheet is VLAND.css -->
+    <link rel="stylesheet" href="VLAND.css">
+    <!-- BUG FIX: correct Paystack JS SDK (paystack.co is not a script) -->
+    <script src="https://js.paystack.co/v1/inline.js"></script>
+</head>
+<body>
+    <div class="container" style="max-width: 600px; margin-top:40px;">
+        <div class="job-card">
+            <h2 style="color:#1a202c; margin-bottom:10px;">FGURL VIP Invoicing</h2>
+            <div style="background:#edf2f7; padding:18px; border-radius:10px; margin:15px 0; font-size:15px; border:1px solid #e2e8f0;">
+                <p style="margin-bottom:6px;">Service Requested: <strong id="outJob">...</strong></p>
+                <p style="margin-bottom:6px;">Corporate Base Cost: <strong id="outActual">...</strong></p>
+                <p style="margin-bottom:6px;">VIP Urgency Fee: <strong id="outVip">...</strong></p>
+                <hr style="margin:12px 0; border:0; border-top:1px solid #cbd5e0;">
+                <p style="font-size:18px; font-weight:bold;">Total Payable Invoice: <strong id="outTotal" style="color:green;">...</strong></p>
+            </div>
+
+            <!-- Paystack Gateway Button Trigger -->
+            <button class="btn" style="background:#38a169;" onclick="launchPaystackCheckout()">Securely Pay via Paystack Gateway</button>
+            <button class="btn" style="background:#edf2f7; color:#4a5568; margin-top:10px;" onclick="window.location.href='jobs.html'">Cancel Order</button>
+        </div>
+    </div>
+
+    <script>
+        // Auto-detects the server: works locally (127.0.0.1:5000) and on Render
+        const BACKEND_URL = window.location.origin;
+
+        const job = localStorage.getItem('checkout_job');
+        const actual = parseInt(localStorage.getItem('checkout_actual_price'), 10) || 0;
+        // BUG FIX: use the surcharge rate chosen on the jobs page (0.00 or 0.25)
+        const surchargeRate = parseFloat(localStorage.getItem('checkout_surcharge_rate') || '0.25');
+
+        const vipSurcharge = actual * surchargeRate;
+        const totalPayable = actual + vipSurcharge;
+
+        document.getElementById('outJob').innerText = job || '...';
+        document.getElementById('outActual').innerText = "₦" + actual.toLocaleString();
+        document.getElementById('outVip').innerText = "₦" + vipSurcharge.toLocaleString();
+        document.getElementById('outTotal').innerText = "₦" + totalPayable.toLocaleString();
+
+        let paystackPublicKey = '';
+
+        // Pull the PUBLIC key from the backend (set PAYSTACK_PUBLIC_KEY env var on Render)
+        async function loadPaystackConfig() {
+            try {
+                const res = await fetch(`${BACKEND_URL}/api/config`);
+                const cfg = await res.json();
+                paystackPublicKey = cfg.paystack_public_key || '';
+            } catch (e) {
+                paystackPublicKey = '';
+            }
+            if (!paystackPublicKey || paystackPublicKey.includes('PASTE')) {
+                alert('Paystack public key is not configured yet. Set PAYSTACK_PUBLIC_KEY on the server.');
+            }
+        }
+        loadPaystackConfig();
+
+        function launchPaystackCheckout() {
+            if (!paystackPublicKey) {
+                alert('Payment gateway is not ready. Please contact support.');
+                return;
+            }
+            const activeUser = localStorage.getItem('active_user') || 'guest';
+            const simulatedEmail = `${activeUser}@fgurlvip.com`;
+
+            let handler = PaystackPop.setup({
+                // LIVE public key is loaded from your server (no key hardcoded here)
+                key: paystackPublicKey,
+                email: simulatedEmail,
+                amount: totalPayable * 100,
+                currency: 'NGN',
+
+                // 🏦 SUBACCOUNT: confirm ACCT_rzai8uws45g8vg5 belongs to YOUR
+                // Paystack dashboard, or remove this line to take 100% yourself.
+                subaccount: 'ACCT_rzai8uws45g8vg5',
+
+                metadata: {
+                    custom_fields: [
+                        { display_name: "Customer Username", variable_name: "username", value: activeUser },
+                        { display_name: "Job Type", variable_name: "job_type", value: job }
+                    ]
+                },
+                callback: function(response) {
+                    alert('Transaction Securely Verified by Bank Network Reference: ' + response.reference);
+                    dispatchConfirmationToBackend(response.reference);
+                },
+                onClose: function() {
+                    alert('Transaction cancelled.');
+                }
+            });
+            handler.openIframe();
+        }
+
+        async function dispatchConfirmationToBackend(referenceId) {
+            const payload = {
+                user: localStorage.getItem('active_user') || 'guest',
+                job_type: job,
+                actual_price: actual,
+                surcharge_rate: surchargeRate,
+                paystack_ref: referenceId
+            };
+
+            // Routes confirmation straight to your Render backend link
+            // BUG FIX: was pointing at https://onrender.com (the homepage)
+            const response = await fetch(`${BACKEND_URL}/api/checkout-live`, {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify(payload)
+            });
+
+            if (response.ok) {
+                window.location.href = 'dashboard.html';
+            } else {
+                alert("Cloud database accounting synchronization failure.");
+            }
+        }
+    </script>
+</body>
+</html>

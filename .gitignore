@@ -1,0 +1,15 @@
+# NEVER commit these — sensitive data
+database.db
+logins.txt
+uploads/
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+venv/
+.venv/
+
+# OS
+Thumbs.db
+.DS_Store

@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>VIP Workspace Shell | FGURL VIP</title>
+    <link rel="stylesheet" href="VLAND.css">
+</head>
+<body>
+
+    <nav class="navbar">
+        <h2>FGURL VIP</h2>
+        <ul class="nav-links">
+            <li><a href="#" id="navHome" class="active">Home</a></li>
+            <li><a href="jobs.html">Jobs</a></li>
+            <li><a href="#" id="navTransact">My Transact</a></li>
+        </ul>
+    </nav>
+
+    <div class="container">
+        <div id="vipBanner" class="reminder-banner">
+            <h3 style="color: #dd6b20;">🚨 GET OUR VIP CARD - GET JOBS DONE FASTER</h3>
+            <p>Complete tasks faster without delay. <a href="VIP-CARD.html" style="color:#667eea">Click here to register now.</a></p>
+        </div>
+
+        <div id="homePanel">
+            <h1>Welcome Back</h1>
+            <p style="margin-top: 10px; color:#666;">Select "Jobs" from the navigation menu above to manage and calculate corporate rates.</p>
+        </div>
+
+        <div id="transactPanel" style="display: none;">
+            <h1>My Transaction Records</h1>
+            <div class="table-container" style="margin-top:20px;">
+                <div id="historyLog">Loading historical account data...</div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Auto-detects the server: works locally (127.0.0.1:5000) and on Render
+        const BACKEND_URL = window.location.origin;
+
+        async function runSecurityIntegrityAudit() {
+            const user = localStorage.getItem('active_user');
+            if(!user) { window.location.href = 'VLAND.html'; return; }
+
+            const res = await fetch(`${BACKEND_URL}/api/check-expiry?user=${encodeURIComponent(user)}`);
+            const data = await res.json();
+            if(data.status === 'expired') {
+                window.location.href = 'renew.html';
+            } else if (data.has_card === true) {
+                localStorage.setItem('vip_reminder_active', 'false');
+            }
+        }
+        runSecurityIntegrityAudit();
+
+        function runVipTimer() {
+            if (localStorage.getItem('vip_reminder_active') === 'true') {
+                const startTime = parseInt(localStorage.getItem('vip_timer_start'), 10);
+                const timerInterval = setInterval(() => {
+                    if (localStorage.getItem('vip_reminder_active') === 'false') {
+                        document.getElementById('vipBanner').style.display = 'none';
+                        clearInterval(timerInterval);
+                        return;
+                    }
+                    if ((Date.now() - startTime) >= 360000) { 
+                        document.getElementById('vipBanner').style.display = 'block';
+                        clearInterval(timerInterval);
+                    }
+                }, 5000);
+            }
+        }
+        runVipTimer();
+
+        document.getElementById('navHome').addEventListener('click', (e) => {
+            e.preventDefault();
+            document.getElementById('homePanel').style.display = 'block';
+            document.getElementById('transactPanel').style.display = 'none';
+        });
+
+        document.getElementById('navTransact').addEventListener('click', async (e) => {
+            e.preventDefault();
+            document.getElementById('homePanel').style.display = 'none';
+            document.getElementById('transactPanel').style.display = 'block';
+            
+            const user = localStorage.getItem('active_user') || 'guest';
+            const response = await fetch(`${BACKEND_URL}/api/transactions?user=${encodeURIComponent(user)}`);
+            if (response.ok) {
+                const logs = await response.json();
+                let output = `<table>
+                    <tr style="background:#eee;"><th>Ref ID</th><th>Job Details</th><th>Total Price</th><th>Status</th></tr>`;
+                logs.forEach(log => {
+                    output += `<tr>
+                        <td><strong>#${String(log.id).padStart(4, '0')}</strong></td>
+                        <td>${log.job_type}</td>
+                        <td>₦${log.total_price.toLocaleString()}</td>
+                        <td style="color:${log.status.includes('Confirmed') ? 'green' : '#dd6b20'}; font-weight:bold;">${log.status}</td>
+                    </tr>`;
+                });
+                output += '</table>';
+                document.getElementById('historyLog').innerHTML = logs.length ? output : '<p>No orders registered yet.</p>';
+            }
+        });
+    </script>
+</body>
+</html>
