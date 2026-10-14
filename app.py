@@ -1,9 +1,12 @@
 import os
+import json
 import sqlite3
 import datetime
 import qrcode
 import bcrypt
 import time
+import hmac
+import hashlib
 import requests
 from flask import Flask, request, jsonify, send_from_directory
 from flask_cors import CORS
@@ -26,6 +29,7 @@ app.config['MAX_CONTENT_LENGTH'] = 15 * 1024 * 1024
 PAYSTACK_SECRET_KEY = os.environ.get("PAYSTACK_SECRET_KEY", "sk_test_your_copied_secret_key_here")
 PAYSTACK_PUBLIC_KEY = os.environ.get("PAYSTACK_PUBLIC_KEY", "")
 PAYSTACK_SUBACCOUNT = os.environ.get("PAYSTACK_SUBACCOUNT", "")
+PAYSTACK_WEBHOOK_SECRET = os.environ.get("PAYSTACK_WEBHOOK_SECRET", "")
 ADMIN_TOKEN = os.environ.get("ADMIN_TOKEN", "")
 # Support multiple admins: ADMIN_TOKENS="token1,token2,token3"
 ADMIN_TOKENS = {t.strip() for t in os.environ.get("ADMIN_TOKENS", "").split(",") if t.strip()}
@@ -74,6 +78,11 @@ def init_db():
             cursor.execute("ALTER TABLE transactions ADD COLUMN timestamp TEXT")
         except sqlite3.OperationalError:
             pass  # another gunicorn worker already added it
+    if "paystack_ref" not in txn_cols:
+        try:
+            cursor.execute("ALTER TABLE transactions ADD COLUMN paystack_ref TEXT")
+        except sqlite3.OperationalError:
+            pass  # another gunicorn worker already added it
     conn.commit()
     conn.close()
 
@@ -99,11 +108,11 @@ def log_payout(paystack_ref, username, total_price):
     # only a console/log report - they are NOT transfers executed by this code.
     partner_share = 2200.00
     your_share = 300.00
-    print("\n💰 --- FGURL VIP REAL-TIME CHECKOUT SPLIT COMPILATION ---")
+    print("\n--- FGURL VIP REAL-TIME CHECKOUT SPLIT COMPILATION ---")
     print(f"Ref Token: [{paystack_ref}] | Account Profile: [{username}]")
-    print(f"Total Confirmed Revenue Received: ₦{total_price:,.2f}")
-    print(f"-> Automated Payout Sent to Partner Node: ₦{partner_share:,.2f}")
-    print(f"-> Your Dedicated Premium Payout (Oladele): ₦{your_share:,.2f} to 8065867966")
+    print(f"Total Confirmed Revenue Received: N{total_price:,.2f}")
+    print(f"-> Automated Payout Sent to Partner Node: N{partner_share:,.2f}")
+    print(f"-> Your Dedicated Premium Payout (Oladele): N{your_share:,.2f} to 8065867966")
     print("-------------------------------------------------------------\n")
 
 def compute_job_price(job_type, params):
@@ -228,9 +237,9 @@ def checkout_live():
     conn = sqlite3.connect(DATABASE_FILE)
     cursor = conn.cursor()
     cursor.execute("""
-        INSERT INTO transactions (username, job_type, actual_price, vip_money, total_price, status, timestamp)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
-    """, (username, job_type, actual_price, vip_money, total_price, "Payment Confirmed / Approved for Production", timestamp))
+        INSERT INTO transactions (username, job_type, actual_price, vip_money, total_price, status, timestamp, paystack_ref)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    """, (username, job_type, actual_price, vip_money, total_price, "Payment Confirmed / Approved for Production", timestamp, paystack_ref))
     conn.commit()
     conn.close()
 
@@ -295,15 +304,103 @@ def vip_checkout():
 
     timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     cursor.execute("""
-        INSERT INTO transactions (username, job_type, actual_price, vip_money, total_price, status, timestamp)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO transactions (username, job_type, actual_price, vip_money, total_price, status, timestamp, paystack_ref)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
     """, (username, f"VIP Card ({tier})", expected_naira, 0.0, expected_naira,
-          "Payment Confirmed / Approved for Production", timestamp))
+          "Payment Confirmed / Approved for Production", timestamp, paystack_ref))
     conn.commit()
     conn.close()
 
     log_payout(paystack_ref, username, expected_naira)
     return jsonify({"message": f"Payment Verified! FGURL VIP Card #{card_sequence_number} ({tier}) is now active."}), 200
+
+@app.route('/api/paystack-webhook', methods=['POST'])
+def paystack_webhook():
+    """Paystack calls this the INSTANT any payment succeeds - true real-time."""
+    if not PAYSTACK_WEBHOOK_SECRET:
+        return jsonify({"message": "Webhook not configured"}), 400
+
+    # Verify the request really came from Paystack
+    signature = request.headers.get('X-Paystack-Token', '')
+    payload = request.get_data()
+    computed = hmac.new(
+        PAYSTACK_WEBHOOK_SECRET.encode('utf-8'), payload, hashlib.sha512
+    ).hexdigest()
+    if not hmac.compare_digest(computed, signature):
+        return jsonify({"message": "Invalid signature"}), 401
+
+    event = request.get_json(silent=True) or {}
+    if event.get('event') != 'charge.success':
+        return jsonify({"message": "Event ignored"}), 200
+
+    data = event.get('data', {})
+    paystack_ref = data.get('reference') or ''
+    amount_kobo = int(data.get('amount') or 0)
+    metadata = data.get('metadata') or {}
+    custom_fields = metadata.get('custom_fields') or []
+    fields = {}
+    for f in custom_fields:
+        if f.get('variable_name'):
+            fields[f['variable_name']] = f.get('value')
+
+    username = (fields.get('username') or '').strip().lower()
+    job_type = fields.get('job_type') or ''
+    tier = fields.get('tier') or ''
+
+    conn = sqlite3.connect(DATABASE_FILE)
+    cursor = conn.cursor()
+
+    # Never record the same payment twice
+    cursor.execute("SELECT id FROM transactions WHERE paystack_ref = ?", (paystack_ref,))
+    if cursor.fetchone():
+        conn.close()
+        return jsonify({"message": "Already processed"}), 200
+
+    timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+    # VIP card purchase
+    if tier in VIP_TIER_PRICES:
+        expected_kobo = VIP_TIER_PRICES[tier] * 100
+        if amount_kobo + 50 < expected_kobo:
+            conn.close()
+            return jsonify({"message": "Underpayment ignored"}), 200
+        cursor.execute("""
+            INSERT INTO transactions (username, job_type, actual_price, vip_money, total_price, status, timestamp, paystack_ref)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        """, (username, f"VIP Card ({tier})", expected_kobo / 100, 0.0, expected_kobo / 100,
+              "Payment Confirmed via Webhook - finish card setup in portal", timestamp, paystack_ref))
+        conn.commit()
+        conn.close()
+        print(f"\n[WEBHOOK] VIP payment {paystack_ref} from {username} (N{expected_kobo/100:,.0f})")
+        return jsonify({"message": "Recorded"}), 200
+
+    # Print / service job
+    if job_type:
+        try:
+            params = json.loads(fields.get('params') or '{}')
+        except ValueError:
+            params = {}
+        price = compute_job_price(job_type, params)
+        if price is None:
+            conn.close()
+            return jsonify({"message": "Unknown job type"}), 200
+        surcharge_rate = float(fields.get('surcharge_rate') or 0.25)
+        total_price = price * (1 + surcharge_rate)
+        if amount_kobo + 50 < total_price * 100:
+            conn.close()
+            return jsonify({"message": "Underpayment ignored"}), 200
+        cursor.execute("""
+            INSERT INTO transactions (username, job_type, actual_price, vip_money, total_price, status, timestamp, paystack_ref)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        """, (username, job_type, price, price * surcharge_rate, total_price,
+              "Payment Confirmed via Webhook / Approved for Production", timestamp, paystack_ref))
+        conn.commit()
+        conn.close()
+        print(f"\n[WEBHOOK] Job payment {paystack_ref} from {username} (N{total_price:,.2f})")
+        return jsonify({"message": "Recorded"}), 200
+
+    conn.close()
+    return jsonify({"message": "No metadata to record"}), 200
 
 @app.route('/api/transactions', methods=['GET'])
 def get_transactions():

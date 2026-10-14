@@ -21,10 +21,20 @@ Set these on Render (service → Environment) or locally before running:
 | `PAYSTACK_SECRET_KEY` | `sk_live_...` (or `sk_test_...` locally) | Server-side payment verification |
 | `PAYSTACK_PUBLIC_KEY` | `pk_live_...` (or `pk_test_...` locally) | Browser checkout key |
 | `PAYSTACK_SUBACCOUNT` | `ACCT_...` (optional) | Revenue split — leave EMPTY to take 100% |
+| `PAYSTACK_WEBHOOK_SECRET` | from Paystack dashboard | Verifies real-time webhooks |
 | `ADMIN_TOKEN` | any secret word | Unlocks `/admin.html` (single admin) |
 | `ADMIN_TOKENS` | `tok1,tok2,tok3` | Comma-separated list for multiple admins |
 
 Get them from: Paystack Dashboard → Settings → API Keys & Webhooks.
+
+## Real-time payment webhooks
+
+1. Paystack dashboard → **Settings → Webhooks** → copy the **Webhook Secret**
+2. Add webhook URL: `https://fgurl-vip.onrender.com/api/paystack-webhook`
+3. Set `PAYSTACK_WEBHOOK_SECRET` on Render
+
+Every successful payment is then recorded instantly — even if the
+customer closes the browser. Orders appear on `/admin.html` within 15s.
 
 ## Admin order monitor
 

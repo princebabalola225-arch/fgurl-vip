@@ -82,7 +82,11 @@
                 metadata: {
                     custom_fields: [
                         { display_name: "Customer Username", variable_name: "username", value: activeUser },
-                        { display_name: "Job Type", variable_name: "job_type", value: job }
+                        { display_name: "Job Type", variable_name: "job_type", value: job },
+                        // Sent so the server can rebuild the order from a webhook
+                        // even if the customer closes the browser
+                        { display_name: "Job Params", variable_name: "params", value: JSON.stringify(params) },
+                        { display_name: "Surcharge Rate", variable_name: "surcharge_rate", value: String(surchargeRate) }
                     ]
                 },
                 callback: function(response) {
