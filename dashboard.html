@@ -28,6 +28,11 @@
             <p style="margin-top: 10px; color:#666;">Select "Jobs" from the navigation menu above to manage and calculate corporate rates.</p>
         </div>
 
+        <div id="announcementsSection" style="margin-top:25px;">
+            <h2 style="font-size:20px; color:#1a202c; margin-bottom:15px;">📢 Latest News &amp; Updates</h2>
+            <div id="announcementsList"><p style="color:#999;">Loading updates...</p></div>
+        </div>
+
         <div id="transactPanel" style="display: none;">
             <h1>My Transaction Records</h1>
             <div class="table-container" style="margin-top:20px;">
@@ -53,6 +58,28 @@
             }
         }
         runSecurityIntegrityAudit();
+        loadAnnouncements();
+
+        async function loadAnnouncements() {
+            try {
+                const res = await fetch(`${BACKEND_URL}/api/announcements`);
+                const items = await res.json();
+                const list = document.getElementById('announcementsList');
+                if (!items.length) {
+                    list.innerHTML = '<p style="color:#999;">No news or updates yet.</p>';
+                    return;
+                }
+                list.innerHTML = items.map(a => `
+                    <div class="job-card" style="margin-bottom:15px; padding:20px;">
+                        <img src="${BACKEND_URL}/api/announcement-image/${a.file_id}" style="width:100%; max-height:300px; object-fit:contain; border-radius:8px; background:#f7fafc;">
+                        <p style="margin-top:12px; font-size:15px; color:#2d3748;">${a.description.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</p>
+                        <p style="margin-top:8px; font-size:12px; color:#a0aec0;">Posted: ${a.created_at}</p>
+                    </div>
+                `).join('');
+            } catch (e) {
+                document.getElementById('announcementsList').innerHTML = '<p style="color:#999;">No news or updates yet.</p>';
+            }
+        }
 
         function runVipTimer() {
             if (localStorage.getItem('vip_reminder_active') === 'true') {

@@ -1,5 +1,6 @@
 import os
 import json
+import uuid
 import sqlite3
 import datetime
 import qrcode
@@ -36,6 +37,14 @@ ADMIN_TOKENS = {t.strip() for t in os.environ.get("ADMIN_TOKENS", "").split(",")
 if ADMIN_TOKEN:
     ADMIN_TOKENS.add(ADMIN_TOKEN)
 
+JOB_FILES_DIR = os.path.join("uploads", "job_files")
+ANNOUNCEMENTS_DIR = os.path.join("uploads", "announcements")
+
+# Envelope & Card design prices (PLACEHOLDER - confirm real prices)
+ENVELOPE_SIZES = {"8x4.5": 2500, "9x5": 3500, "10x6": 4500}
+CARD_SIZES = {"3.5x2": 1500, "4x2.5": 2000, "4.5x3": 2500}
+DESIGN_FEE = 2000  # extra when customer has NOT designed it themselves
+
 # VIP card tiers: price in Naira + validity in days
 VIP_TIER_PRICES = {"blue": 1500, "red": 3000, "yellow": 4500, "black": 6000}
 VIP_TIER_VALIDITY_DAYS = {"blue": 30, "red": 90, "yellow": 180, "black": 365}
@@ -69,6 +78,17 @@ def init_db():
             message_text TEXT, timestamp TEXT, is_read INTEGER
         )
     """)
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS job_availability (
+            job_key TEXT PRIMARY KEY, available INTEGER DEFAULT 1, reason TEXT DEFAULT ''
+        )
+    """)
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS announcements (
+            id INTEGER PRIMARY KEY AUTOINCREMENT, file_id TEXT, file_name TEXT,
+            description TEXT, created_at TEXT
+        )
+    """)
     # Migrate databases created by older versions of this app:
     # the old "transactions" table had no "timestamp" column.
     cursor.execute("PRAGMA table_info(transactions)")
@@ -81,6 +101,11 @@ def init_db():
     if "paystack_ref" not in txn_cols:
         try:
             cursor.execute("ALTER TABLE transactions ADD COLUMN paystack_ref TEXT")
+        except sqlite3.OperationalError:
+            pass  # another gunicorn worker already added it
+    if "file_id" not in txn_cols:
+        try:
+            cursor.execute("ALTER TABLE transactions ADD COLUMN file_id TEXT")
         except sqlite3.OperationalError:
             pass  # another gunicorn worker already added it
     conn.commit()
@@ -118,16 +143,33 @@ def log_payout(paystack_ref, username, total_price):
 def compute_job_price(job_type, params):
     """Server-side price calculation so clients cannot tamper with prices."""
     try:
+        copies = int(params.get('copies', 1))
+        if copies < 1 or copies > 1000000:
+            return None  # enforce the 1 - 1,000,000 copies limit
         if job_type.startswith("Sticker"):
-            return float(params.get('w', 0)) * float(params.get('h', 0)) * 250
+            return float(params.get('w', 0)) * float(params.get('h', 0)) * 250 * copies
         if job_type.startswith("Banner"):
-            return float(params.get('w', 0)) * float(params.get('h', 0)) * float(params.get('rate', 0))
+            return float(params.get('w', 0)) * float(params.get('h', 0)) * float(params.get('rate', 0)) * copies
         if job_type.startswith("Mug"):
-            return float(params.get('unit', 0)) * float(params.get('qty', 0))
+            return float(params.get('unit', 0)) * copies
         if job_type.startswith("Fixed"):
-            return float(params.get('price', 0))
+            return float(params.get('price', 0)) * copies
         if job_type.startswith("Typing"):
-            return float(params.get('rate', 0)) * float(params.get('pages', 0))
+            return float(params.get('rate', 0)) * float(params.get('pages', 0)) * copies
+        if job_type.startswith("Envelope Design"):
+            base = ENVELOPE_SIZES.get(params.get('size', ''))
+            if base is None:
+                return None
+            if params.get('design') != 'yes':
+                base += DESIGN_FEE
+            return base * copies
+        if job_type.startswith("Card Design"):
+            base = CARD_SIZES.get(params.get('size', ''))
+            if base is None:
+                return None
+            if params.get('design') != 'yes':
+                base += DESIGN_FEE
+            return base * copies
     except (TypeError, ValueError):
         return None
     return None
@@ -210,6 +252,7 @@ def checkout_live():
     job_type = data.get('job_type') or ''
     surcharge_rate = float(data.get('surcharge_rate') or 0.25)
     params = data.get('params') or {}
+    file_id = data.get('file_id') or ''
     paystack_ref = data.get('paystack_ref')
 
     # Server-side price calculation - the client-supplied price is ignored
@@ -237,9 +280,9 @@ def checkout_live():
     conn = sqlite3.connect(DATABASE_FILE)
     cursor = conn.cursor()
     cursor.execute("""
-        INSERT INTO transactions (username, job_type, actual_price, vip_money, total_price, status, timestamp, paystack_ref)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    """, (username, job_type, actual_price, vip_money, total_price, "Payment Confirmed / Approved for Production", timestamp, paystack_ref))
+        INSERT INTO transactions (username, job_type, actual_price, vip_money, total_price, status, timestamp, paystack_ref, file_id)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    """, (username, job_type, actual_price, vip_money, total_price, "Payment Confirmed / Approved for Production", timestamp, paystack_ref, file_id))
     conn.commit()
     conn.close()
 
@@ -346,6 +389,7 @@ def paystack_webhook():
     username = (fields.get('username') or '').strip().lower()
     job_type = fields.get('job_type') or ''
     tier = fields.get('tier') or ''
+    file_id = fields.get('file_id') or ''
 
     conn = sqlite3.connect(DATABASE_FILE)
     cursor = conn.cursor()
@@ -390,10 +434,10 @@ def paystack_webhook():
             conn.close()
             return jsonify({"message": "Underpayment ignored"}), 200
         cursor.execute("""
-            INSERT INTO transactions (username, job_type, actual_price, vip_money, total_price, status, timestamp, paystack_ref)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO transactions (username, job_type, actual_price, vip_money, total_price, status, timestamp, paystack_ref, file_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (username, job_type, price, price * surcharge_rate, total_price,
-              "Payment Confirmed via Webhook / Approved for Production", timestamp, paystack_ref))
+              "Payment Confirmed via Webhook / Approved for Production", timestamp, paystack_ref, file_id))
         conn.commit()
         conn.close()
         print(f"\n[WEBHOOK] Job payment {paystack_ref} from {username} (N{total_price:,.2f})")
@@ -401,6 +445,36 @@ def paystack_webhook():
 
     conn.close()
     return jsonify({"message": "No metadata to record"}), 200
+
+@app.route('/api/upload-job-file', methods=['POST'])
+def upload_job_file():
+    """Customer uploads their design/artwork before paying."""
+    uploaded = request.files.get('file')
+    if not uploaded or not uploaded.filename:
+        return jsonify({"message": "No file selected."}), 400
+    file_id = uuid.uuid4().hex
+    os.makedirs(JOB_FILES_DIR, exist_ok=True)
+    safe_name = secure_filename(uploaded.filename) or "job_file"
+    stored_name = f"{file_id}_{safe_name}"
+    uploaded.save(os.path.join(JOB_FILES_DIR, stored_name))
+    return jsonify({"file_id": file_id, "file_name": safe_name}), 200
+
+@app.route('/api/job-file/<file_id>', methods=['GET'])
+def serve_job_file(file_id):
+    """Admin-only download of an uploaded job file."""
+    token = request.args.get('token') or ''
+    if not ADMIN_TOKENS or token not in ADMIN_TOKENS:
+        return jsonify({"message": "Unauthorized."}), 401
+    # file_id must be a 32-char hex uuid - blocks path traversal
+    if not file_id or len(file_id) != 32 or not all(c in '0123456789abcdef' for c in file_id):
+        return jsonify({"message": "Invalid file id."}), 400
+    try:
+        matches = [f for f in os.listdir(JOB_FILES_DIR) if f.startswith(file_id + "_")]
+    except FileNotFoundError:
+        matches = []
+    if not matches:
+        return jsonify({"message": "File not found."}), 404
+    return send_from_directory(JOB_FILES_DIR, matches[0], as_attachment=True)
 
 @app.route('/api/transactions', methods=['GET'])
 def get_transactions():
@@ -422,12 +496,99 @@ def admin_transactions():
     conn = sqlite3.connect(DATABASE_FILE)
     conn.row_factory = sqlite3.Row
     cursor = conn.cursor()
-    cursor.execute("SELECT id, username, job_type, total_price, status, timestamp FROM transactions ORDER BY id DESC LIMIT 200")
+    cursor.execute("SELECT id, username, job_type, total_price, status, timestamp, paystack_ref, file_id FROM transactions ORDER BY id DESC LIMIT 200")
     txns = [dict(r) for r in cursor.fetchall()]
     cursor.execute("SELECT card_id, username, name, phone, tier, issue_date FROM vip_cards ORDER BY card_id DESC")
     cards = [dict(r) for r in cursor.fetchall()]
     conn.close()
     return jsonify({"transactions": txns, "vip_cards": cards})
+
+@app.route('/api/job-availability', methods=['GET'])
+def job_availability():
+    """Public: which jobs are currently available/unavailable."""
+    conn = sqlite3.connect(DATABASE_FILE)
+    conn.row_factory = sqlite3.Row
+    cursor = conn.cursor()
+    cursor.execute("SELECT job_key, available, reason FROM job_availability")
+    rows = {r['job_key']: {"available": bool(r['available']), "reason": r['reason']} for r in cursor.fetchall()}
+    conn.close()
+    return jsonify(rows)
+
+@app.route('/api/admin/availability', methods=['POST'])
+def admin_availability():
+    token = request.args.get('token') or request.headers.get('X-Admin-Token') or ''
+    if not ADMIN_TOKENS or token not in ADMIN_TOKENS:
+        return jsonify({"message": "Unauthorized."}), 401
+    data = get_json_body()
+    job_key = data.get('job_key') or ''
+    available = bool(data.get('available', True))
+    reason = str(data.get('reason') or '').strip()
+    if not job_key:
+        return jsonify({"message": "Missing job key."}), 400
+    if reason and len(reason.split()) > 50:
+        return jsonify({"message": "Reason must be 50 words or less."}), 400
+    conn = sqlite3.connect(DATABASE_FILE)
+    cursor = conn.cursor()
+    cursor.execute("""
+        INSERT INTO job_availability (job_key, available, reason)
+        VALUES (?, ?, ?)
+        ON CONFLICT(job_key) DO UPDATE SET available = ?, reason = ?
+    """, (job_key, 1 if available else 0, reason, 1 if available else 0, reason))
+    conn.commit()
+    conn.close()
+    return jsonify({"message": "Availability updated."}), 200
+
+@app.route('/api/admin/announcements', methods=['POST'])
+def admin_announcements():
+    """Admin posts a news/update with a design file (max 15MB) + description (max 100 words)."""
+    token = request.args.get('token') or request.headers.get('X-Admin-Token') or ''
+    if not ADMIN_TOKENS or token not in ADMIN_TOKENS:
+        return jsonify({"message": "Unauthorized."}), 401
+    file = request.files.get('file')
+    if not file or not file.filename:
+        return jsonify({"message": "No file selected."}), 400
+    description = str(request.form.get('description') or '').strip()
+    if not description:
+        return jsonify({"message": "Description required."}), 400
+    if len(description.split()) > 100:
+        return jsonify({"message": "Description must be 100 words or less."}), 400
+    file_id = uuid.uuid4().hex
+    os.makedirs(ANNOUNCEMENTS_DIR, exist_ok=True)
+    safe_name = secure_filename(file.filename) or "news_file"
+    stored_name = f"{file_id}_{safe_name}"
+    file.save(os.path.join(ANNOUNCEMENTS_DIR, stored_name))
+    timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    conn = sqlite3.connect(DATABASE_FILE)
+    cursor = conn.cursor()
+    cursor.execute("""
+        INSERT INTO announcements (file_id, file_name, description, created_at)
+        VALUES (?, ?, ?, ?)
+    """, (file_id, safe_name, description, timestamp))
+    conn.commit()
+    conn.close()
+    return jsonify({"message": "News/Update posted to dashboard."}), 200
+
+@app.route('/api/announcements', methods=['GET'])
+def get_announcements():
+    conn = sqlite3.connect(DATABASE_FILE)
+    conn.row_factory = sqlite3.Row
+    cursor = conn.cursor()
+    cursor.execute("SELECT id, file_id, file_name, description, created_at FROM announcements ORDER BY id DESC LIMIT 20")
+    rows = [dict(r) for r in cursor.fetchall()]
+    conn.close()
+    return jsonify(rows)
+
+@app.route('/api/announcement-image/<file_id>', methods=['GET'])
+def serve_announcement_image(file_id):
+    if not file_id or len(file_id) != 32 or not all(c in '0123456789abcdef' for c in file_id):
+        return jsonify({"message": "Invalid file id."}), 400
+    try:
+        matches = [f for f in os.listdir(ANNOUNCEMENTS_DIR) if f.startswith(file_id + "_")]
+    except FileNotFoundError:
+        matches = []
+    if not matches:
+        return jsonify({"message": "File not found."}), 404
+    return send_from_directory(ANNOUNCEMENTS_DIR, matches[0])
 
 # ---------------------------------------------------------------------------
 # Serve the frontend pages (Render only runs what app.py exposes)

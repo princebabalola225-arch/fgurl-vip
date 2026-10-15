@@ -6,56 +6,141 @@
     <title>FGURL VIP | Admin Order Center</title>
     <link rel="stylesheet" href="VLAND.css">
     <style>
+        :root {
+            --brand-1: #553c9a;
+            --brand-2: #6b46c1;
+            --accent: #ed8936;
+            --accent-2: #38b2ac;
+            --good: #2f855a;
+            --bad: #c53030;
+        }
+        body { background: linear-gradient(180deg, #f7f4ff 0%, #ffffff 30%); }
+        .admin-header {
+            background: linear-gradient(135deg, #553c9a 0%, #6b46c1 60%, #805ad5 100%);
+            color: white; padding: 25px 20px; margin: -15px -15px 20px -15px;
+            border-radius: 0 0 20px 20px; box-shadow: 0 4px 15px rgba(85,60,154,0.3);
+        }
+        .admin-header h2 { margin: 0; font-size: 22px; }
+        .admin-header p { margin: 5px 0 0; opacity: 0.85; font-size: 14px; }
+        .section {
+            border-radius: 14px; padding: 20px; margin-bottom: 20px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.06);
+        }
+        .section-orders { background: linear-gradient(135deg, #ebf8ff 0%, #ffffff 100%); border: 1px solid #bee3f8; }
+        .section-cards { background: linear-gradient(135deg, #faf5ff 0%, #ffffff 100%); border: 1px solid #e9d8fd; }
+        .section-avail { background: linear-gradient(135deg, #fffaf0 0%, #ffffff 100%); border: 1px solid #feebc8; }
+        .section-news { background: linear-gradient(135deg, #f0fff4 0%, #ffffff 100%); border: 1px solid #c6f6d5; }
+        .section h3 { margin-top: 0; }
+        .badge { display: inline-block; padding: 3px 10px; border-radius: 20px; font-size: 12px; font-weight: 600; }
+        .badge-on { background: #c6f6d5; color: #22543d; }
+        .badge-off { background: #fed7d7; color: #822727; }
         table { width: 100%; border-collapse: collapse; font-size: 14px; }
         th, td { padding: 10px; border: 1px solid #e2e8f0; text-align: left; }
         th { background: #edf2f7; }
+        .avail-row {
+            display: flex; align-items: center; gap: 12px; padding: 12px;
+            border-radius: 10px; margin-bottom: 8px; background: #fff;
+            border: 1px solid #e2e8f0; flex-wrap: wrap;
+        }
+        .avail-row .job-name { flex: 1; min-width: 200px; font-weight: 600; color: #2d3748; }
+        .avail-row input[type="text"] {
+            flex: 2; min-width: 200px; padding: 8px 12px; border: 1px solid #cbd5e0;
+            border-radius: 8px; font-size: 13px;
+        }
+        .avail-row input[type="checkbox"] { width: 20px; height: 20px; accent-color: #553c9a; }
+        .btn { cursor: pointer; border: none; }
+        .btn-accent { background: #ed8936; color: white; }
+        .btn-accent:hover { background: #dd6b20; }
+        .btn-brand { background: #553c9a; color: white; }
+        .btn-brand:hover { background: #44337a; }
+        .btn-small { padding: 6px 14px; font-size: 13px; border-radius: 8px; }
+        .msg-ok { color: var(--good); font-weight: 600; }
+        .msg-err { color: var(--bad); font-weight: 600; }
+        .news-preview { max-width: 200px; max-height: 150px; border-radius: 8px; margin-top: 8px; }
     </style>
 </head>
 <body>
-    <nav class="navbar">
-        <h2>FGURL VIP — Admin Order Center</h2>
-        <ul class="nav-links">
-            <li><a href="VLAND.html">Main Site</a></li>
-        </ul>
-    </nav>
+    <div class="admin-header">
+        <h2>⚡ FGURL VIP — Admin Control Center</h2>
+        <p>Orders · VIP Cards · Job Availability · News &amp; Updates</p>
+    </div>
 
     <div class="container">
-        <div class="job-card">
-            <h2>🔐 Orders &amp; VIP Cards Monitor</h2>
-            <p style="color:#718096; font-size:14px; margin:10px 0;">
-                This page shows every payment and VIP card in real time.
-                You need your <strong>ADMIN_TOKEN</strong> (set on the server) to enter.
-            </p>
-            <div style="display:flex; gap:10px; margin:15px 0;">
-                <input type="password" id="adminToken" placeholder="Admin token" class="input-field" style="flex:1;">
-                <button class="btn" onclick="loadAdminData()">Load Orders</button>
+
+        <!-- TOKEN GATE -->
+        <div class="section" style="background:#fff; border:1px solid #e2e8f0;">
+            <h3 style="color:#553c9a; margin-top:0;">🔐 Admin Access</h3>
+            <div style="display:flex; gap:10px; flex-wrap:wrap;">
+                <input type="password" id="adminToken" placeholder="Enter your admin token" class="input-field" style="flex:1; min-width:220px;">
+                <button class="btn btn-brand" onclick="loadAdminData()">Load Orders</button>
             </div>
-            <p id="adminMsg" class="message"></p>
+            <p id="adminMsg" class="message" style="margin-top:10px;"></p>
             <p id="autoRefresh" style="display:none; font-size:13px; color:#666;">
                 🔄 Auto-refreshing every 15 seconds — <a href="#" onclick="stopRefresh(); return false;">stop</a>
             </p>
         </div>
 
-        <div class="job-card" style="margin-top:20px;">
-            <h3>💰 Payments / Orders</h3>
+        <!-- ORDERS -->
+        <div class="section section-orders">
+            <h3 style="color:#2b6cb0;">💰 Payments / Orders</h3>
             <div class="table-container" id="txnTable" style="margin-top:10px;">
-                <p style="color:#999;">No data loaded yet.</p>
+                <p style="color:#999;">Load orders to see data.</p>
             </div>
         </div>
 
-        <div class="job-card" style="margin-top:20px;">
-            <h3>💳 VIP Cards Issued</h3>
+        <!-- VIP CARDS -->
+        <div class="section section-cards">
+            <h3 style="color:#6b46c1;">💳 VIP Cards Issued</h3>
             <div class="table-container" id="cardTable" style="margin-top:10px;">
-                <p style="color:#999;">No data loaded yet.</p>
+                <p style="color:#999;">Load orders to see data.</p>
             </div>
         </div>
+
+        <!-- JOB AVAILABILITY -->
+        <div class="section section-avail">
+            <h3 style="color:#c05621;">🚧 Job Availability Manager</h3>
+            <p style="color:#718096; font-size:14px;">Switch a job off and add a reason (max 50 words). Customers will see it as unavailable.</p>
+            <div id="availList" style="margin-top:12px;"></div>
+            <button class="btn btn-accent" onclick="saveAvailability()" style="margin-top:12px;">💾 Save Availability Changes</button>
+            <p id="availMsg" style="margin-top:10px;"></p>
+        </div>
+
+        <!-- NEWS / UPDATES -->
+        <div class="section section-news">
+            <h3 style="color:#276749;">📢 Post News / Update</h3>
+            <p style="color:#718096; font-size:14px;">Upload a design/image (max 15MB) + a description (max 100 words). It appears on every customer's dashboard.</p>
+            <div style="margin-top:12px;">
+                <label style="font-size:13px; font-weight:600;">Update / News Image or Design</label>
+                <input type="file" id="newsFile" class="input-field" style="margin-top:5px;">
+                <label style="font-size:13px; font-weight:600; display:block; margin-top:10px;">Description (max 100 words)</label>
+                <textarea id="newsDesc" rows="3" class="input-field" style="margin-top:5px;" placeholder="Type your update here..."></textarea>
+                <p id="newsWordCount" style="font-size:12px; color:#a0aec0; margin-top:3px;">0 / 100 words</p>
+                <button class="btn btn-accent" onclick="postNews()" style="margin-top:10px;">🚀 Post to Dashboard</button>
+                <p id="newsMsg" style="margin-top:10px;"></p>
+            </div>
+        </div>
+
     </div>
 
     <script>
-        // Auto-detects the server: works locally (127.0.0.1:5000) and on Render
         const BACKEND_URL = window.location.origin;
         let refreshTimer = null;
         let savedToken = '';
+
+        const AVAIL_JOBS = [
+            { key: "sticker", name: "Sticker (Large Format)" },
+            { key: "banner_flex", name: "Banner & Flex Printing (Large Format)" },
+            { key: "clay_sticker", name: "Clay Sticker (Large Format)" },
+            { key: "paper_sticker", name: "Paper Sticker (Digital Image)" },
+            { key: "envelope", name: "Envelope Design (Digital Image)" },
+            { key: "card", name: "Card Design (Digital Image)" },
+            { key: "sublimation", name: "Typing & Printing Sublimation" },
+            { key: "nin_id", name: "NIN Card Printout (P.V.C)" },
+            { key: "id_card", name: "ID Card Printout (P.V.C)" },
+            { key: "mug", name: "Mug Cup Production" },
+            { key: "typing", name: "Typing & Printing Services" },
+            { key: "envelope_card", name: "Design of Envelope & Cards" },
+        ];
 
         function esc(s) {
             return String(s == null ? '' : s)
@@ -63,6 +148,7 @@
                 .replace(/"/g, '&quot;');
         }
 
+        // ----- ORDERS -----
         async function loadAdminData() {
             const tokenInput = document.getElementById('adminToken');
             const token = (tokenInput && tokenInput.value.trim()) || savedToken;
@@ -77,15 +163,18 @@
                 const res = await fetch(`${BACKEND_URL}/api/admin/transactions?token=${encodeURIComponent(token)}`);
                 const data = await res.json();
                 if (!res.ok) {
+                    msg.className = 'message error';
                     msg.innerText = data.message || 'Unauthorized.';
                     return;
                 }
+                msg.className = 'message';
                 msg.innerText = `Last updated: ${new Date().toLocaleTimeString()}`;
                 renderTables(data);
                 document.getElementById('autoRefresh').style.display = 'block';
                 clearInterval(refreshTimer);
                 refreshTimer = setInterval(loadAdminData, 15000);
             } catch (e) {
+                msg.className = 'message error';
                 msg.innerText = 'Cannot reach server.';
             }
         }
@@ -99,7 +188,7 @@
             const txns = data.transactions || [];
             if (txns.length) {
                 let out = `<table>
-                    <tr><th>#</th><th>User</th><th>Order</th><th>Total</th><th>Status</th><th>Time</th></tr>`;
+                    <tr><th>#</th><th>User</th><th>Order</th><th>Total</th><th>Status</th><th>File</th><th>Time</th></tr>`;
                 txns.forEach(t => {
                     out += `<tr>
                         <td><strong>${String(t.id).padStart(4, '0')}</strong></td>
@@ -107,6 +196,7 @@
                         <td>${esc(t.job_type)}</td>
                         <td>₦${Number(t.total_price || 0).toLocaleString()}</td>
                         <td style="color:${String(t.status || '').includes('Confirmed') ? 'green' : '#dd6b20'};">${esc(t.status)}</td>
+                        <td>${t.file_id ? `<a href="${BACKEND_URL}/api/job-file/${t.file_id}?token=${encodeURIComponent(savedToken)}" target="_blank">Download</a>` : '-'}</td>
                         <td>${esc(t.timestamp)}</td>
                     </tr>`;
                 });
@@ -136,6 +226,102 @@
                 document.getElementById('cardTable').innerHTML = '<p>No VIP cards issued yet.</p>';
             }
         }
+
+        // ----- AVAILABILITY -----
+        function renderAvailList() {
+            const list = document.getElementById('availList');
+            list.innerHTML = AVAIL_JOBS.map(j => `
+                <div class="avail-row">
+                    <span class="job-name">${j.name}</span>
+                    <label style="font-size:13px; font-weight:600;">
+                        <input type="checkbox" id="avail-${j.key}" checked> Available
+                    </label>
+                    <input type="text" id="reason-${j.key}" placeholder="Reason if unavailable (max 50 words)">
+                </div>
+            `).join('');
+        }
+
+        async function loadAvailability() {
+            try {
+                const res = await fetch(`${BACKEND_URL}/api/job-availability`);
+                const data = await res.json();
+                AVAIL_JOBS.forEach(j => {
+                    const entry = data[j.key];
+                    const checkbox = document.getElementById(`avail-${j.key}`);
+                    const reasonInput = document.getElementById(`reason-${j.key}`);
+                    if (entry) {
+                        checkbox.checked = entry.available !== false;
+                        reasonInput.value = entry.reason || '';
+                    }
+                });
+            } catch (e) { /* ignore */ }
+        }
+
+        async function saveAvailability() {
+            const msg = document.getElementById('availMsg');
+            msg.className = '';
+            msg.innerText = 'Saving...';
+            let saved = 0;
+            for (const j of AVAIL_JOBS) {
+                const available = document.getElementById(`avail-${j.key}`).checked;
+                const reason = document.getElementById(`reason-${j.key}`).value.trim();
+                try {
+                    const res = await fetch(`${BACKEND_URL}/api/admin/availability?token=${encodeURIComponent(savedToken)}`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ job_key: j.key, available, reason }),
+                    });
+                    if (res.ok) saved++;
+                } catch (e) { /* continue */ }
+            }
+            msg.className = 'msg-ok';
+            msg.innerText = `✅ Availability saved (${saved}/${AVAIL_JOBS.length}).`;
+        }
+
+        // ----- NEWS -----
+        document.addEventListener('DOMContentLoaded', () => {
+            const desc = document.getElementById('newsDesc');
+            desc.addEventListener('input', () => {
+                document.getElementById('newsWordCount').innerText = `${desc.value.trim().split(/\s+/).filter(Boolean).length} / 100 words`;
+            });
+        });
+
+        async function postNews() {
+            const msg = document.getElementById('newsMsg');
+            const fileInput = document.getElementById('newsFile');
+            const desc = document.getElementById('newsDesc').value.trim();
+            msg.className = '';
+            if (!fileInput.files[0]) { msg.className = 'msg-err'; msg.innerText = 'Select an image/design file.'; return; }
+            if (!desc) { msg.className = 'msg-err'; msg.innerText = 'Description is required.'; return; }
+            if (desc.split(/\s+/).filter(Boolean).length > 100) { msg.className = 'msg-err'; msg.innerText = 'Description must be 100 words or less.'; return; }
+            const formData = new FormData();
+            formData.append('file', fileInput.files[0]);
+            formData.append('description', desc);
+            msg.innerText = 'Posting...';
+            try {
+                const res = await fetch(`${BACKEND_URL}/api/admin/announcements?token=${encodeURIComponent(savedToken)}`, {
+                    method: 'POST', body: formData,
+                });
+                const data = await res.json();
+                if (res.ok) {
+                    msg.className = 'msg-ok';
+                    msg.innerText = data.message;
+                    fileInput.value = '';
+                    document.getElementById('newsDesc').value = '';
+                    document.getElementById('newsWordCount').innerText = '0 / 100 words';
+                } else {
+                    msg.className = 'msg-err';
+                    msg.innerText = data.message || 'Failed to post.';
+                }
+            } catch (e) {
+                msg.className = 'msg-err';
+                msg.innerText = 'Cannot reach server.';
+            }
+        }
+
+        // ----- INIT -----
+        renderAvailList();
+        loadAvailability();
     </script>
 </body>
 </html>

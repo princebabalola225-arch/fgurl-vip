@@ -86,7 +86,8 @@
                         // Sent so the server can rebuild the order from a webhook
                         // even if the customer closes the browser
                         { display_name: "Job Params", variable_name: "params", value: JSON.stringify(params) },
-                        { display_name: "Surcharge Rate", variable_name: "surcharge_rate", value: String(surchargeRate) }
+                        { display_name: "Surcharge Rate", variable_name: "surcharge_rate", value: String(surchargeRate) },
+                        { display_name: "Job File", variable_name: "file_id", value: localStorage.getItem('checkout_file_id') || '' }
                     ]
                 },
                 callback: function(response) {
@@ -114,6 +115,7 @@
                 surcharge_rate: surchargeRate,
                 // Server recalculates the price from these raw parameters
                 params: JSON.parse(localStorage.getItem('checkout_params') || '{}'),
+                file_id: localStorage.getItem('checkout_file_id') || '',
                 paystack_ref: referenceId
             };
 

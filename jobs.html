@@ -21,7 +21,7 @@
         <div class="jobs-grid">
             
             <!-- STICKERS & LABELS PRODUCTION CARD (SECTION 6) -->
-            <div class="job-card">
+            <div class="job-card" id="stickCard" data-avail-key="sticker">
                 <h3>Stickers & Labels Production</h3>
                 <p style="font-size:13px; color:var(--text-muted); margin-bottom:10px;">Premium area calculation computed at ₦250 per square foot.</p>
                 <div class="row-inputs">
@@ -39,12 +39,16 @@
                     <option value="0.25">VIP Surcharge Processing </option>
                     <option value="0.00">Standard Timeline Processing (No Extra Charge)</option>
                 </select>
+                <label style="font-size:12px; display:block; margin-top:10px; font-weight:600;">Number of Copies (Max 1,000,000)</label>
+                <input type="number" id="stickCopies" value="1" min="1" max="1000000" class="input-field" style="margin-top:5px;">
                 <button class="btn" onclick="calculateStickerPrice()">Compute Production Cost</button>
+                <label style="font-size:12px; display:block; margin-top:10px; font-weight:600;">Upload Job File / Artwork (Optional)</label>
+                <input type="file" id="stickFile" class="input-field" style="margin-top:5px;">
                 <div id="stickerOutput" style="margin-top:15px; font-weight:bold;"></div>
             </div>
 
             <!-- BANNERS & FLEX PRODUCTION CARD -->
-            <div class="job-card">
+            <div class="job-card" id="flexCard" data-avail-key="banner_flex">
                 <h3>Banner & Flex Printing</h3>
                 <div class="row-inputs">
                     <div>
@@ -62,12 +66,16 @@
                     <option value="500">Standard VIP Client Tier</option>
                     <option value="600">Walk-In / Direct Customer</option>
                 </select>
+                <label style="font-size:12px; display:block; margin-top:10px; font-weight:600;">Number of Copies (Max 1,000,000)</label>
+                <input type="number" id="flexCopies" value="1" min="1" max="1000000" class="input-field" style="margin-top:5px;">
                 <button class="btn" onclick="calculateFlexPrice()">Compute Flex Cost</button>
+                <label style="font-size:12px; display:block; margin-top:10px; font-weight:600;">Upload Job File / Artwork (Optional)</label>
+                <input type="file" id="flexFile" class="input-field" style="margin-top:5px;">
                 <div id="flexOutput" style="margin-top:15px; font-weight:bold;"></div>
             </div>
 
             <!-- MUG CUP PRODUCTION CARD -->
-            <div class="job-card">
+            <div class="job-card" id="mugCard" data-avail-key="mug">
                 <h3>Mug Cup Production</h3>
                 <label style="font-size:14px; display:block; font-weight:600;">Select Mug Type</label>
                 <select id="mugType" class="input-field">
@@ -76,48 +84,57 @@
                     <option value="3000">Ordinary Big Mug Cup - ₦3,000</option>
                     <option value="2000">Ordinary Small Mug Cup - ₦2,000</option>
                 </select>
-                <div class="row-inputs">
-                    <div>
-                        <label style="font-size:12px; font-weight:600;">Quantity</label>
-                        <input type="number" id="mugQty" value="1" min="1" class="input-field">
-                    </div>
-                </div>
-                <label style="font-size:14px; display:block; font-weight:600;">Production Urgency Tier</label>
+                <label style="font-size:14px; display:block; font-weight:600;">Number of Copies (Max 1,000,000)</label>
+                <input type="number" id="mugCopies" value="1" min="1" max="1000000" class="input-field">
+                <label style="font-size:14px; display:block; font-weight:600; margin-top:10px;">Production Urgency Tier</label>
                 <select id="mugUrgency" class="input-field">
                     <option value="0.25">VIP Surcharge Processing </option>
                     <option value="0.00">Standard Timeline Processing (No Extra Charge)</option>
                 </select>
                 <button class="btn" onclick="calculateMugPrice()">Compute Mug Cost</button>
+                <label style="font-size:12px; display:block; margin-top:10px; font-weight:600;">Upload Design / Artwork (Optional)</label>
+                <input type="file" id="mugFile" class="input-field" style="margin-top:5px;">
                 <div id="mugOutput" style="margin-top:15px; font-weight:bold;"></div>
             </div>
 
             <!-- FIXED PRICE JOBS CARD -->
-            <div class="job-card">
+            <div class="job-card" id="fixedCard">
                 <h3>Fixed Price Printouts</h3>
                 <label style="font-size:14px; display:block; font-weight:600;">Select Document Type</label>
                 <select id="fixedType" class="input-field">
                     <option value="4000">NIN Printout - ₦4,000</option>
                     <option value="3500">ID Card Printout - ₦3,500</option>
                 </select>
-                <label style="font-size:14px; display:block; font-weight:600;">Production Urgency Tier</label>
+                <label style="font-size:14px; display:block; font-weight:600;">Number of Copies (Max 1,000,000)</label>
+                <input type="number" id="fixedCopies" value="1" min="1" max="1000000" class="input-field">
+                <label style="font-size:14px; display:block; font-weight:600; margin-top:10px;">Production Urgency Tier</label>
                 <select id="fixedUrgency" class="input-field">
                     <option value="0.25">VIP Surcharge Processing </option>
                     <option value="0.00">Standard Timeline Processing (No Extra Charge)</option>
                 </select>
                 <button class="btn" onclick="calculateFixedPrice()">Compute Printout Cost</button>
+                <label style="font-size:12px; display:block; margin-top:10px; font-weight:600;">Upload Document (Optional)</label>
+                <input type="file" id="fixedFile" class="input-field" style="margin-top:5px;">
                 <div id="fixedOutput" style="margin-top:15px; font-weight:bold;"></div>
             </div>
 
             <!-- TYPING & PRINTING SERVICES CARD -->
-            <div class="job-card">
+            <div class="job-card" id="typingCard" data-avail-key="typing">
                 <h3>Typing & Printing Services</h3>
                 <label style="font-size:14px; display:block; font-weight:600;">Select Task Configuration</label>
                 <select id="typingType" class="input-field">
-                    <option value="800">Typing and Printing Colored - ₦800</option>
-                    <option value="500">Typing and Printing - ₦500</option>
-                    <option value="300">Typing Only - ₦300</option>
-                    <option value="500">Printing Colored Only - ₦500</option>
-                    <option value="300">Printing Only - ₦300</option>
+                    <option value="500">Typing and Printing (A4) - ₦500</option>
+                    <option value="700">Typing and Printing (A3) - ₦700</option>
+                    <option value="1000">Typing and Printing Colored (A4) - ₦1,000</option>
+                    <option value="1700">Typing and Printing Colored (A3) - ₦1,700</option>
+                    <option value="700">Typing and Printing Card (A4) - ₦700</option>
+                    <option value="1200">Typing and Printing Card (A3) - ₦1,200</option>
+                    <option value="1200">Typing and Printing Card Colored (A4) - ₦1,200</option>
+                    <option value="1700">Typing and Printing Card Colored (A3) - ₦1,700</option>
+                    <option value="600">Typing and Printing Paper Sticker - ₦600</option>
+                    <option value="1100">Typing and Printing Paper Sticker Colored - ₦1,100</option>
+                    <option value="1000">Typing and Printing Sublimation (A4) - ₦1,000</option>
+                    <option value="2000">Typing and Printing Sublimation (A3) - ₦2,000</option>
                 </select>
                 <div class="row-inputs">
                     <div>
@@ -125,13 +142,42 @@
                         <input type="number" id="typingPages" value="1" min="1" class="input-field">
                     </div>
                 </div>
-                <label style="font-size:14px; display:block; font-weight:600;">Production Urgency Tier</label>
+                <label style="font-size:14px; display:block; font-weight:600;">Number of Copies (Max 1,000,000)</label>
+                <input type="number" id="typingCopies" value="1" min="1" max="1000000" class="input-field">
+                <label style="font-size:14px; display:block; font-weight:600; margin-top:10px;">Production Urgency Tier</label>
                 <select id="typingUrgency" class="input-field">
                     <option value="0.25">VIP Surcharge Processing </option>
                     <option value="0.00">Standard Timeline Processing (No Extra Charge)</option>
                 </select>
                 <button class="btn" onclick="calculateTypingPrice()">Compute Document Cost</button>
+                <label style="font-size:12px; display:block; margin-top:10px; font-weight:600;">Upload Document (Optional)</label>
+                <input type="file" id="typingFile" class="input-field" style="margin-top:5px;">
                 <div id="typingOutput" style="margin-top:15px; font-weight:bold;"></div>
+            </div>
+
+            <!-- ENVELOPE & CARD DESIGN CARD -->
+            <div class="job-card" id="designCard" data-avail-key="envelope_card">
+                <h3>Design of Envelope &amp; Cards</h3>
+                <label style="font-size:14px; display:block; font-weight:600;">Select Item</label>
+                <select id="designItem" class="input-field" onchange="updateDesignSizes()">
+                    <option value="card">Card</option>
+                    <option value="envelope">Envelope</option>
+                </select>
+                <label style="font-size:14px; display:block; font-weight:600; margin-top:10px;">Have You Designed It?</label>
+                <select id="designStatus" class="input-field" onchange="toggleDesignUpload()">
+                    <option value="no">No, I haven't</option>
+                    <option value="yes">Yes, I have</option>
+                </select>
+                <div id="designUploadWrap" style="display:none; margin-top:10px;">
+                    <label style="font-size:12px; font-weight:600;">Upload Your Design (Required)</label>
+                    <input type="file" id="designFile" class="input-field" style="margin-top:5px;">
+                </div>
+                <label style="font-size:14px; display:block; font-weight:600; margin-top:10px;">Select Size</label>
+                <select id="designSize" class="input-field"></select>
+                <label style="font-size:12px; display:block; margin-top:10px; font-weight:600;">Number of Copies (Max 1,000,000)</label>
+                <input type="number" id="designCopies" value="1" min="1" max="1000000" class="input-field">
+                <button class="btn" onclick="calculateDesignPrice()">Compute Design Cost</button>
+                <div id="designOutput" style="margin-top:15px; font-weight:bold;"></div>
             </div>
 
             <!-- SPECIALIZED SUPPORT DESK -->
@@ -145,13 +191,31 @@
     </div>
 
     <script>
-        function routeToCheckout(jobType, actualPrice, surchargeRate, params) {
+        // Auto-detects the server: works locally (127.0.0.1:5000) and on Render
+        const BACKEND_URL = window.location.origin;
+
+        async function routeToCheckout(jobType, actualPrice, surchargeRate, params, fileInputId) {
+            // Upload the customer's job file/artwork first, then proceed
+            let fileId = '';
+            const fileInput = document.getElementById(fileInputId);
+            if (fileInput && fileInput.files && fileInput.files[0]) {
+                const formData = new FormData();
+                formData.append('file', fileInput.files[0]);
+                try {
+                    const res = await fetch(`${BACKEND_URL}/api/upload-job-file`, { method: 'POST', body: formData });
+                    const data = await res.json();
+                    if (!res.ok) { alert(data.message || 'Job file upload failed.'); return; }
+                    fileId = data.file_id;
+                } catch (e) {
+                    alert('Cannot upload job file - check your connection.');
+                    return;
+                }
+            }
             localStorage.setItem('checkout_job', jobType);
             localStorage.setItem('checkout_actual_price', actualPrice);
             localStorage.setItem('checkout_surcharge_rate', surchargeRate);
-            // Raw parameters are sent to the server, which recalculates the
-            // price itself so clients cannot tamper with the amount.
             localStorage.setItem('checkout_params', JSON.stringify(params || {}));
+            localStorage.setItem('checkout_file_id', fileId);
             window.location.href = 'payment.html';
         }
 
@@ -159,18 +223,20 @@
             const w = parseFloat(document.getElementById('stickWidth').value || 0);
             const h = parseFloat(document.getElementById('stickHeight').value || 0);
             const surchargeRate = parseFloat(document.getElementById('stickUrgency').value);
+            const copies = parseInt(document.getElementById('stickCopies').value || 1, 10);
             
-            const baseCost = w * h * 250; 
+            const baseCost = w * h * 250 * copies; 
             const vipCharge = baseCost * surchargeRate;
             const total = baseCost + vipCharge;
 
             document.getElementById('stickerOutput').innerHTML = `
                 <div style="background:#f7fafc; padding:12px; border-radius:8px; font-size:14px; margin-bottom:10px; border:1px solid #e2e8f0;">
+                    Copies: ${copies.toLocaleString()}<br>
                     Base Price: ₦${baseCost.toLocaleString()}<br>
                     FGURL VIP Urgency Charge: ₦${vipCharge.toLocaleString()}<br>
                     <strong>Total Payable: ₦${total.toLocaleString()}</strong>
                 </div>
-                <button class="btn" style="background:green;" onclick="routeToCheckout('Sticker Job (${w}x${h} ft)', ${baseCost}, ${surchargeRate}, {w: ${w}, h: ${h}})">Proceed to Payment Gateway</button>
+                <button class="btn" style="background:green;" onclick="routeToCheckout('Sticker Job (${w}x${h} ft x ${copies} copies)', ${baseCost}, ${surchargeRate}, {w: ${w}, h: ${h}, copies: ${copies}}, 'stickFile')">Proceed to Payment Gateway</button>
             `;
         }
 
@@ -178,74 +244,175 @@
             const w = parseInt(document.getElementById('flexWidth').value || 0);
             const h = parseInt(document.getElementById('flexHeight').value || 0);
             const tierRate = parseInt(document.getElementById('isPrinter').value, 10);
+            const copies = parseInt(document.getElementById('flexCopies').value || 1, 10);
 
-            const baseCost = w * h * tierRate;
+            const baseCost = w * h * tierRate * copies;
             const vipCharge = 0; // Flex pricing is per-customer-category (no VIP surcharge)
             const total = baseCost + vipCharge;
 
             document.getElementById('flexOutput').innerHTML = `
                 <div style="background:#f7fafc; padding:12px; border-radius:8px; font-size:14px; margin-bottom:10px; border:1px solid #e2e8f0;">
+                    Copies: ${copies.toLocaleString()}<br>
                     Base Price: ₦${baseCost.toLocaleString()}<br>
                     <strong>Total Payable: ₦${total.toLocaleString()}</strong>
                 </div>
-                <button class="btn" style="background:green;" onclick="routeToCheckout('Banner/Flex Job (${w}x${h} ft)', ${baseCost}, 0, {w: ${w}, h: ${h}, rate: ${tierRate}})">Proceed to Payment Gateway</button>
+                <button class="btn" style="background:green;" onclick="routeToCheckout('Banner/Flex Job (${w}x${h} ft x ${copies} copies)', ${baseCost}, 0, {w: ${w}, h: ${h}, rate: ${tierRate}, copies: ${copies}}, 'flexFile')">Proceed to Payment Gateway</button>
             `;
         }
 
         function calculateMugPrice() {
             const unitPrice = parseInt(document.getElementById('mugType').value, 10);
-            const qty = parseInt(document.getElementById('mugQty').value || 1, 10);
+            const copies = parseInt(document.getElementById('mugCopies').value || 1, 10);
             const surchargeRate = parseFloat(document.getElementById('mugUrgency').value);
 
-            const baseCost = unitPrice * qty;
+            const baseCost = unitPrice * copies;
             const vipCharge = baseCost * surchargeRate;
             const total = baseCost + vipCharge;
 
             document.getElementById('mugOutput').innerHTML = `
                 <div style="background:#f7fafc; padding:12px; border-radius:8px; font-size:14px; margin-bottom:10px; border:1px solid #e2e8f0;">
+                    Copies: ${copies.toLocaleString()}<br>
                     Base Price: ₦${baseCost.toLocaleString()}<br>
                     FGURL VIP Urgency Charge: ₦${vipCharge.toLocaleString()}<br>
                     <strong>Total Payable: ₦${total.toLocaleString()}</strong>
                 </div>
-                <button class="btn" style="background:green;" onclick="routeToCheckout('Mug Cup Job (${qty} units)', ${baseCost}, ${surchargeRate}, {unit: ${unitPrice}, qty: ${qty}})">Proceed to Payment Gateway</button>
+                <button class="btn" style="background:green;" onclick="routeToCheckout('Mug Cup Job (${copies} copies)', ${baseCost}, ${surchargeRate}, {unit: ${unitPrice}, copies: ${copies}}, 'mugFile')">Proceed to Payment Gateway</button>
             `;
         }
 
         function calculateFixedPrice() {
-            const baseCost = parseInt(document.getElementById('fixedType').value, 10);
+            const unitPrice = parseInt(document.getElementById('fixedType').value, 10);
+            const copies = parseInt(document.getElementById('fixedCopies').value || 1, 10);
             const surchargeRate = parseFloat(document.getElementById('fixedUrgency').value);
 
+            const baseCost = unitPrice * copies;
             const vipCharge = baseCost * surchargeRate;
             const total = baseCost + vipCharge;
 
             document.getElementById('fixedOutput').innerHTML = `
                 <div style="background:#f7fafc; padding:12px; border-radius:8px; font-size:14px; margin-bottom:10px; border:1px solid #e2e8f0;">
+                    Copies: ${copies.toLocaleString()}<br>
                     Base Price: ₦${baseCost.toLocaleString()}<br>
                     FGURL VIP Urgency Charge: ₦${vipCharge.toLocaleString()}<br>
                     <strong>Total Payable: ₦${total.toLocaleString()}</strong>
                 </div>
-                <button class="btn" style="background:green;" onclick="routeToCheckout('Fixed Printout Job', ${baseCost}, ${surchargeRate}, {price: ${baseCost}})">Proceed to Payment Gateway</button>
+                <button class="btn" style="background:green;" onclick="routeToCheckout('Fixed Printout Job (${copies} copies)', ${baseCost}, ${surchargeRate}, {price: ${unitPrice}, copies: ${copies}}, 'fixedFile')">Proceed to Payment Gateway</button>
             `;
         }
 
         function calculateTypingPrice() {
             const perPageRate = parseInt(document.getElementById('typingType').value, 10);
             const pages = parseInt(document.getElementById('typingPages').value || 1, 10);
+            const copies = parseInt(document.getElementById('typingCopies').value || 1, 10);
             const surchargeRate = parseFloat(document.getElementById('typingUrgency').value);
 
-            const baseCost = perPageRate * pages;
+            const baseCost = perPageRate * pages * copies;
             const vipCharge = baseCost * surchargeRate;
             const total = baseCost + vipCharge;
 
             document.getElementById('typingOutput').innerHTML = `
                 <div style="background:#f7fafc; padding:12px; border-radius:8px; font-size:14px; margin-bottom:10px; border:1px solid #e2e8f0;">
+                    Copies: ${copies.toLocaleString()}<br>
                     Base Price: ₦${baseCost.toLocaleString()}<br>
                     FGURL VIP Urgency Charge: ₦${vipCharge.toLocaleString()}<br>
                     <strong>Total Payable: ₦${total.toLocaleString()}</strong>
                 </div>
-                <button class="btn" style="background:green;" onclick="routeToCheckout('Typing/Printing Job (${pages} pages)', ${baseCost}, ${surchargeRate}, {rate: ${perPageRate}, pages: ${pages}})">Proceed to Payment Gateway</button>
+                <button class="btn" style="background:green;" onclick="routeToCheckout('Typing/Printing Job (${pages} pages x ${copies} copies)', ${baseCost}, ${surchargeRate}, {rate: ${perPageRate}, pages: ${pages}, copies: ${copies}}, 'typingFile')">Proceed to Payment Gateway</button>
             `;
         }
+        // ----- ENVELOPE & CARD DESIGN -----
+        const DESIGN_SIZES = {
+            envelope: [
+                { value: "8x4.5", label: "8 x 4.5 inches (Minimum)" },
+                { value: "9x5", label: "9 x 5 inches" },
+                { value: "10x6", label: "10 x 6 inches" },
+            ],
+            card: [
+                { value: "3.5x2", label: "3.5 x 2 inches (Minimum)" },
+                { value: "4x2.5", label: "4 x 2.5 inches" },
+                { value: "4.5x3", label: "4.5 x 3 inches" },
+            ],
+        };
+
+        function updateDesignSizes() {
+            const item = document.getElementById('designItem').value;
+            const sizeSelect = document.getElementById('designSize');
+            sizeSelect.innerHTML = '';
+            DESIGN_SIZES[item].forEach(s => {
+                const opt = document.createElement('option');
+                opt.value = s.value;
+                opt.innerText = s.label;
+                sizeSelect.appendChild(opt);
+            });
+        }
+
+        function toggleDesignUpload() {
+            const show = document.getElementById('designStatus').value === 'yes';
+            document.getElementById('designUploadWrap').style.display = show ? 'block' : 'none';
+        }
+
+        function calculateDesignPrice() {
+            const item = document.getElementById('designItem').value;
+            const design = document.getElementById('designStatus').value;
+            const size = document.getElementById('designSize').value;
+            const copies = parseInt(document.getElementById('designCopies').value || 1, 10);
+            const fileInput = document.getElementById('designFile');
+            if (design === 'yes' && (!fileInput.files || !fileInput.files[0])) {
+                alert('Please upload your design file.');
+                return;
+            }
+            const jobType = item === 'card' ? 'Card Design' : 'Envelope Design';
+            document.getElementById('designOutput').innerHTML = `
+                <div style="background:#f7fafc; padding:12px; border-radius:8px; font-size:14px; margin-bottom:10px; border:1px solid #e2e8f0;">
+                    Item: ${item.toUpperCase()}<br>
+                    Size: ${size} inches<br>
+                    Your Design: ${design === 'yes' ? 'Yes' : 'No'}<br>
+                    Copies: ${copies.toLocaleString()}<br>
+                    <strong>Proceed to payment for final price.</strong>
+                </div>
+                <button class="btn" style="background:green;" onclick="routeToCheckout('${jobType} (${size})', 0, 25, {item: '${item}', design: '${design}', size: '${size}', copies: ${copies}}, 'designFile')">Proceed to Payment Gateway</button>
+            `;
+        }
+
+        // ----- JOB AVAILABILITY (admin can disable jobs with a reason) -----
+        let AVAIL = {};
+        async function loadAvailability() {
+            try {
+                const res = await fetch(`${BACKEND_URL}/api/job-availability`);
+                AVAIL = await res.json();
+            } catch (e) {
+                AVAIL = {};
+            }
+            applyAvailability();
+        }
+
+        function applyAvailability() {
+            document.querySelectorAll('[data-avail-key]').forEach(card => {
+                const key = card.dataset.availKey;
+                const entry = AVAIL[key];
+                if (entry && entry.available === false) {
+                    card.style.opacity = '0.55';
+                    card.style.pointerEvents = 'none';
+                    const banner = document.createElement('div');
+                    banner.style.cssText = 'background:#fff5f5;border:1px solid #fc8181;color:#c53030;padding:10px;border-radius:8px;margin-bottom:10px;font-size:13px;';
+                    banner.innerHTML = `<strong>UNAVAILABLE:</strong> ${entry.reason}`;
+                    card.insertBefore(banner, card.firstChild);
+                }
+            });
+            // Fixed card: disable individual options (NIN / ID)
+            document.querySelectorAll('#fixedType option').forEach(opt => {
+                const key = opt.value === '4000' ? 'nin_id' : 'id_card';
+                const entry = AVAIL[key];
+                if (entry && entry.available === false) {
+                    opt.disabled = true;
+                    opt.textContent += ' (UNAVAILABLE)';
+                }
+            });
+        }
+
+        // Init
+        updateDesignSizes();
+        loadAvailability();
     </script>
 </body>
 </html>
