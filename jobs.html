@@ -320,7 +320,31 @@
                 <button class="btn" style="background:green;" onclick="routeToCheckout('Typing/Printing Job (${pages} pages x ${copies} copies)', ${baseCost}, ${surchargeRate}, {rate: ${perPageRate}, pages: ${pages}, copies: ${copies}}, 'typingFile')">Proceed to Payment Gateway</button>
             `;
         }
+        // ----- VIP STATUS: VIP members get VIP pricing on ALL jobs -----
+        let IS_VIP = false;
+        async function checkVipStatus() {
+            const user = localStorage.getItem('active_user');
+            if (!user) return;
+            try {
+                const res = await fetch(`${BACKEND_URL}/api/check-expiry?user=${encodeURIComponent(user)}`);
+                const data = await res.json();
+                if (data.has_card === true) {
+                    IS_VIP = true;
+                    // Auto-select VIP surcharge on all urgency dropdowns
+                    ['stickUrgency', 'mugUrgency', 'fixedUrgency', 'typingUrgency'].forEach(id => {
+                        const el = document.getElementById(id);
+                        if (el) el.value = '0.25';
+                    });
+                }
+            } catch (e) { /* ignore */ }
+        }
+
         // ----- ENVELOPE & CARD DESIGN -----
+        const DESIGN_DIMS = {
+            "8x4.5": [8, 4.5], "9x5": [9, 5], "10x6": [10, 6],
+            "3.5x2": [3.5, 2], "4x2.5": [4, 2.5], "4.5x3": [4.5, 3],
+        };
+        const DESIGN_RATES = { yes: 1000, no: 3000 }; // per sq ft
         const DESIGN_SIZES = {
             envelope: [
                 { value: "8x4.5", label: "8 x 4.5 inches (Minimum)" },
@@ -362,15 +386,23 @@
                 return;
             }
             const jobType = item === 'card' ? 'Card Design' : 'Envelope Design';
+            const dims = DESIGN_DIMS[size];
+            const rate = DESIGN_RATES[design];
+            // Price = (width x height in sq inches / 144) x rate per sq ft x copies
+            const baseCost = (dims[0] * dims[1] / 144) * rate * copies;
+            const surchargeRate = IS_VIP ? 0.25 : 0;
+            const vipCharge = baseCost * surchargeRate;
+            const total = baseCost + vipCharge;
             document.getElementById('designOutput').innerHTML = `
                 <div style="background:#f7fafc; padding:12px; border-radius:8px; font-size:14px; margin-bottom:10px; border:1px solid #e2e8f0;">
-                    Item: ${item.toUpperCase()}<br>
-                    Size: ${size} inches<br>
+                    Item: ${item.toUpperCase()} (${size} inches)<br>
                     Your Design: ${design === 'yes' ? 'Yes' : 'No'}<br>
                     Copies: ${copies.toLocaleString()}<br>
-                    <strong>Proceed to payment for final price.</strong>
+                    Base Price: ₦${baseCost.toLocaleString()}<br>
+                    VIP Charge: ₦${vipCharge.toLocaleString()}<br>
+                    <strong>Total Payable: ₦${total.toLocaleString()}</strong>
                 </div>
-                <button class="btn" style="background:green;" onclick="routeToCheckout('${jobType} (${size})', 0, 25, {item: '${item}', design: '${design}', size: '${size}', copies: ${copies}}, 'designFile')">Proceed to Payment Gateway</button>
+                <button class="btn" style="background:green;" onclick="routeToCheckout('${jobType} (${size})', ${baseCost}, ${surchargeRate}, {item: '${item}', design: '${design}', size: '${size}', copies: ${copies}}, 'designFile')">Proceed to Payment Gateway</button>
             `;
         }
 
@@ -413,6 +445,7 @@
         // Init
         updateDesignSizes();
         loadAvailability();
+        checkVipStatus();
     </script>
 </body>
 </html>

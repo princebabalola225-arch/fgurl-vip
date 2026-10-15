@@ -40,10 +40,11 @@ if ADMIN_TOKEN:
 JOB_FILES_DIR = os.path.join("uploads", "job_files")
 ANNOUNCEMENTS_DIR = os.path.join("uploads", "announcements")
 
-# Envelope & Card design prices (PLACEHOLDER - confirm real prices)
-ENVELOPE_SIZES = {"8x4.5": 2500, "9x5": 3500, "10x6": 4500}
-CARD_SIZES = {"3.5x2": 1500, "4x2.5": 2000, "4.5x3": 2500}
-DESIGN_FEE = 2000  # extra when customer has NOT designed it themselves
+# Design pricing: area in sq inches / 144 = sq ft, times rate per sq ft
+DESIGN_RATE_DESIGNED = 1000    # customer already designed it (per sq ft)
+DESIGN_RATE_NOT_DESIGNED = 3000  # FGURL designs it (per sq ft)
+ENVELOPE_DIMENSIONS = {"8x4.5": (8, 4.5), "9x5": (9, 5), "10x6": (10, 6)}
+CARD_DIMENSIONS = {"3.5x2": (3.5, 2), "4x2.5": (4, 2.5), "4.5x3": (4.5, 3)}
 
 # VIP card tiers: price in Naira + validity in days
 VIP_TIER_PRICES = {"blue": 1500, "red": 3000, "yellow": 4500, "black": 6000}
@@ -157,19 +158,17 @@ def compute_job_price(job_type, params):
         if job_type.startswith("Typing"):
             return float(params.get('rate', 0)) * float(params.get('pages', 0)) * copies
         if job_type.startswith("Envelope Design"):
-            base = ENVELOPE_SIZES.get(params.get('size', ''))
-            if base is None:
+            dims = ENVELOPE_DIMENSIONS.get(params.get('size', ''))
+            if dims is None:
                 return None
-            if params.get('design') != 'yes':
-                base += DESIGN_FEE
-            return base * copies
+            rate = DESIGN_RATE_DESIGNED if params.get('design') == 'yes' else DESIGN_RATE_NOT_DESIGNED
+            return (dims[0] * dims[1] / 144) * rate * copies
         if job_type.startswith("Card Design"):
-            base = CARD_SIZES.get(params.get('size', ''))
-            if base is None:
+            dims = CARD_DIMENSIONS.get(params.get('size', ''))
+            if dims is None:
                 return None
-            if params.get('design') != 'yes':
-                base += DESIGN_FEE
-            return base * copies
+            rate = DESIGN_RATE_DESIGNED if params.get('design') == 'yes' else DESIGN_RATE_NOT_DESIGNED
+            return (dims[0] * dims[1] / 144) * rate * copies
     except (TypeError, ValueError):
         return None
     return None
@@ -288,6 +287,60 @@ def checkout_live():
 
     log_payout(paystack_ref, username, total_price)
     return jsonify({"message": f"Payment Verified! Total Processed: ₦{total_price:,.2f}."}), 200
+
+@app.route('/api/cash-order', methods=['POST'])
+def cash_order():
+    """Customer chooses to pay in cash. Creates order pending admin confirmation."""
+    data = get_json_body()
+    username = data.get('user')
+    job_type = data.get('job_type') or ''
+    surcharge_rate = float(data.get('surcharge_rate') or 0.25)
+    params = data.get('params') or {}
+    file_id = data.get('file_id') or ''
+
+    actual_price = compute_job_price(job_type, params)
+    if actual_price is None:
+        return jsonify({"message": "Invalid job parameters supplied."}), 400
+
+    vip_money = actual_price * surcharge_rate
+    total_price = actual_price + vip_money
+    timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+    conn = sqlite3.connect(DATABASE_FILE)
+    cursor = conn.cursor()
+    cursor.execute("""
+        INSERT INTO transactions (username, job_type, actual_price, vip_money, total_price, status, timestamp, file_id)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    """, (username, job_type, actual_price, vip_money, total_price,
+          "Cash Payment Pending Confirmation", timestamp, file_id))
+    conn.commit()
+    conn.close()
+
+    print(f"\n[CASH ORDER] {username} | {job_type} | N{total_price:,.2f} - awaiting admin confirmation")
+    return jsonify({"message": f"Order placed! Total: ₦{total_price:,.2f}. Pay in cash - the admin will confirm your payment."}), 200
+
+@app.route('/api/admin/confirm-cash', methods=['POST'])
+def admin_confirm_cash():
+    """Admin confirms they received the cash payment."""
+    token = request.args.get('token') or request.headers.get('X-Admin-Token') or ''
+    if not ADMIN_TOKENS or token not in ADMIN_TOKENS:
+        return jsonify({"message": "Unauthorized."}), 401
+    data = get_json_body()
+    txn_id = data.get('id')
+    if not txn_id:
+        return jsonify({"message": "Missing transaction id."}), 400
+    conn = sqlite3.connect(DATABASE_FILE)
+    cursor = conn.cursor()
+    cursor.execute("""
+        UPDATE transactions SET status = 'Cash Payment Confirmed / Approved for Production'
+        WHERE id = ? AND status = 'Cash Payment Pending Confirmation'
+    """, (txn_id,))
+    updated = cursor.rowcount
+    conn.commit()
+    conn.close()
+    if not updated:
+        return jsonify({"message": "Transaction not found or already confirmed."}), 404
+    return jsonify({"message": "Cash payment confirmed."}), 200
 
 @app.route('/api/vip-checkout', methods=['POST'])
 def vip_checkout():

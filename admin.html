@@ -192,12 +192,15 @@
                 let out = `<table>
                     <tr><th>#</th><th>User</th><th>Order</th><th>Total</th><th>Status</th><th>File</th><th>Time</th></tr>`;
                 txns.forEach(t => {
+                    const isCashPending = String(t.status || '').includes('Cash Payment Pending');
                     out += `<tr>
                         <td><strong>${String(t.id).padStart(4, '0')}</strong></td>
                         <td>${esc(t.username)}</td>
                         <td>${esc(t.job_type)}</td>
                         <td>₦${Number(t.total_price || 0).toLocaleString()}</td>
-                        <td style="color:${String(t.status || '').includes('Confirmed') ? 'green' : '#dd6b20'};">${esc(t.status)}</td>
+                        <td style="color:${isCashPending ? '#c05621' : String(t.status || '').includes('Confirmed') ? 'green' : '#dd6b20'};">
+                            ${isCashPending ? `<button class="btn btn-small" style="background:#2f855a;color:white;" onclick="confirmCash(${t.id})">Confirm Cash</button>` : esc(t.status)}
+                        </td>
                         <td>${t.file_id ? `<a href="${BACKEND_URL}/api/job-file/${t.file_id}?token=${encodeURIComponent(savedToken)}" target="_blank">Download</a>` : '-'}</td>
                         <td>${esc(t.timestamp)}</td>
                     </tr>`;
@@ -364,6 +367,22 @@
                 } else {
                     alert(data.message || 'Delete failed.');
                 }
+            } catch (e) {
+                alert('Cannot reach server.');
+            }
+        }
+
+        async function confirmCash(id) {
+            if (!confirm('Confirm that cash payment was received?')) return;
+            try {
+                const res = await fetch(`${BACKEND_URL}/api/admin/confirm-cash?token=${encodeURIComponent(savedToken)}`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ id }),
+                });
+                const data = await res.json();
+                alert(data.message);
+                if (res.ok) loadAdminData();
             } catch (e) {
                 alert('Cannot reach server.');
             }

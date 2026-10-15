@@ -23,6 +23,7 @@
 
             <!-- Paystack Gateway Button Trigger -->
             <button class="btn" style="background:#38a169;" onclick="launchPaystackCheckout()">Securely Pay via Paystack Gateway</button>
+            <button class="btn" style="background:#2d3748; color:white; margin-top:10px;" onclick="payInCash()">Pay in Cash</button>
             <button class="btn" style="background:#edf2f7; color:#4a5568; margin-top:10px;" onclick="window.location.href='jobs.html'">Cancel Order</button>
         </div>
     </div>
@@ -106,6 +107,29 @@
 
             let handler = PaystackPop.setup(setupConfig);
             handler.openIframe();
+        }
+
+        async function payInCash() {
+            const payload = {
+                user: localStorage.getItem('active_user') || 'guest',
+                job_type: job,
+                surcharge_rate: surchargeRate,
+                params: JSON.parse(localStorage.getItem('checkout_params') || '{}'),
+                file_id: localStorage.getItem('checkout_file_id') || '',
+            };
+            const response = await fetch(`${BACKEND_URL}/api/cash-order`, {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify(payload),
+            });
+            if (response.ok) {
+                const data = await response.json();
+                alert(data.message);
+                window.location.href = 'dashboard.html';
+            } else {
+                const data = await response.json().catch(() => ({}));
+                alert(data.message || 'Could not place cash order.');
+            }
         }
 
         async function dispatchConfirmationToBackend(referenceId) {
