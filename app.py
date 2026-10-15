@@ -568,6 +568,32 @@ def admin_announcements():
     conn.close()
     return jsonify({"message": "News/Update posted to dashboard."}), 200
 
+@app.route('/api/admin/announcements/<int:ann_id>', methods=['DELETE'])
+def delete_announcement(ann_id):
+    """Admin deletes a posted news/update (record + file)."""
+    token = request.args.get('token') or request.headers.get('X-Admin-Token') or ''
+    if not ADMIN_TOKENS or token not in ADMIN_TOKENS:
+        return jsonify({"message": "Unauthorized."}), 401
+    conn = sqlite3.connect(DATABASE_FILE)
+    cursor = conn.cursor()
+    cursor.execute("SELECT file_id FROM announcements WHERE id = ?", (ann_id,))
+    row = cursor.fetchone()
+    if not row:
+        conn.close()
+        return jsonify({"message": "Announcement not found."}), 404
+    file_id = row[0]
+    cursor.execute("DELETE FROM announcements WHERE id = ?", (ann_id,))
+    conn.commit()
+    conn.close()
+    # Remove the stored file
+    try:
+        matches = [f for f in os.listdir(ANNOUNCEMENTS_DIR) if f.startswith(file_id + "_")]
+        for m in matches:
+            os.remove(os.path.join(ANNOUNCEMENTS_DIR, m))
+    except (FileNotFoundError, OSError):
+        pass
+    return jsonify({"message": "Announcement deleted."}), 200
+
 @app.route('/api/announcements', methods=['GET'])
 def get_announcements():
     conn = sqlite3.connect(DATABASE_FILE)

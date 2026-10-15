@@ -117,6 +117,8 @@
                 <p id="newsWordCount" style="font-size:12px; color:#a0aec0; margin-top:3px;">0 / 100 words</p>
                 <button class="btn btn-accent" onclick="postNews()" style="margin-top:10px;">🚀 Post to Dashboard</button>
                 <p id="newsMsg" style="margin-top:10px;"></p>
+                <h4 style="margin-top:20px; color:#276749;">📋 Posted Updates (tap to delete)</h4>
+                <div id="postedUpdates" style="margin-top:10px;"><p style="color:#999;">Loading...</p></div>
             </div>
         </div>
 
@@ -309,6 +311,7 @@
                     fileInput.value = '';
                     document.getElementById('newsDesc').value = '';
                     document.getElementById('newsWordCount').innerText = '0 / 100 words';
+                    loadPostedUpdates();
                 } else {
                     msg.className = 'msg-err';
                     msg.innerText = data.message || 'Failed to post.';
@@ -322,6 +325,49 @@
         // ----- INIT -----
         renderAvailList();
         loadAvailability();
+        loadPostedUpdates();
+
+        async function loadPostedUpdates() {
+            try {
+                const res = await fetch(`${BACKEND_URL}/api/announcements`);
+                const items = await res.json();
+                const wrap = document.getElementById('postedUpdates');
+                if (!items.length) {
+                    wrap.innerHTML = '<p style="color:#999;">No updates posted yet.</p>';
+                    return;
+                }
+                wrap.innerHTML = items.map(a => `
+                    <div style="display:flex; align-items:center; gap:10px; background:#fff; border:1px solid #e2e8f0; border-radius:8px; padding:10px; margin-bottom:8px; flex-wrap:wrap;">
+                        <img src="${BACKEND_URL}/api/announcement-image/${a.file_id}" style="width:60px; height:60px; object-fit:cover; border-radius:6px;">
+                        <div style="flex:1; min-width:150px;">
+                            <div style="font-size:13px; color:#2d3748;">${esc(a.description)}</div>
+                            <div style="font-size:11px; color:#a0aec0;">${esc(a.created_at)}</div>
+                        </div>
+                        <button class="btn btn-small" style="background:#c53030; color:white;" onclick="deleteUpdate(${a.id})">🗑 Delete</button>
+                    </div>
+                `).join('');
+            } catch (e) {
+                document.getElementById('postedUpdates').innerHTML = '<p style="color:#999;">No updates posted yet.</p>';
+            }
+        }
+
+        async function deleteUpdate(id) {
+            if (!confirm('Delete this update?')) return;
+            try {
+                const res = await fetch(`${BACKEND_URL}/api/admin/announcements/${id}?token=${encodeURIComponent(savedToken)}`, {
+                    method: 'DELETE',
+                });
+                const data = await res.json();
+                if (res.ok) {
+                    alert(data.message);
+                    loadPostedUpdates();
+                } else {
+                    alert(data.message || 'Delete failed.');
+                }
+            } catch (e) {
+                alert('Cannot reach server.');
+            }
+        }
     </script>
 </body>
 </html>
