@@ -36,6 +36,7 @@
                 <input type="file" id="passportFile" accept="image/*" class="input-field" required>
 
                 <button type="submit" id="saveBtn" class="btn">Save Info & Purchase</button>
+                <button type="button" class="btn" style="background:#2d3748; color:white; margin-top:10px;" onclick="payVipInCash()">Pay in Cash</button>
                 <button type="button" id="notNowBtn" class="btn" style="background:#edf2f7; color:#4a5568; margin-top:10px;">Not Now</button>
                 <p id="msg" class="message"></p>
             </form>
@@ -73,6 +74,49 @@
             localStorage.setItem('vip_timer_start', Date.now());
             window.location.href = 'dashboard.html';
         });
+
+        async function payVipInCash() {
+            const fileInput = document.getElementById('passportFile');
+            const msg = document.getElementById('msg');
+            const saveBtn = document.getElementById('saveBtn');
+            const tier = document.getElementById('cardTier').value;
+
+            if(fileInput.files[0].size > 15 * 1024 * 1024) {
+                msg.className = "message error";
+                msg.innerText = "Error: File size limits exceeded (Max 15MB).";
+                return;
+            }
+
+            const activeUser = localStorage.getItem('active_user') || 'guest';
+            const formData = new FormData();
+            formData.append('username', activeUser);
+            formData.append('name', document.getElementById('vipName').value);
+            formData.append('phone', document.getElementById('vipPhone').value);
+            formData.append('sex', document.getElementById('vipSex').value);
+            formData.append('tier', tier);
+            formData.append('issue_date', document.getElementById('issueDate').value);
+            formData.append('passport', fileInput.files[0]);
+
+            saveBtn.disabled = true;
+            saveBtn.innerHTML = `<span class="spinner"></span> Processing...`;
+
+            const response = await fetch(`${BACKEND_URL}/api/vip-cash-order`, {
+                method: 'POST',
+                body: formData
+            });
+
+            if (response.ok) {
+                const data = await response.json();
+                alert(data.message);
+                localStorage.setItem('vip_reminder_active', 'false');
+                window.location.href = 'dashboard.html';
+            } else {
+                const data = await response.json().catch(() => ({}));
+                alert(data.message || "Could not process cash order.");
+                saveBtn.disabled = false;
+                saveBtn.innerText = "Save Info & Purchase";
+            }
+        }
 
         document.getElementById('vipForm').addEventListener('submit', async (e) => {
             e.preventDefault();

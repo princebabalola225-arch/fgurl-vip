@@ -410,6 +410,62 @@ def vip_checkout():
     log_payout(paystack_ref, username, expected_naira)
     return jsonify({"message": f"Payment Verified! FGURL VIP Card #{card_sequence_number} ({tier}) is now active."}), 200
 
+@app.route('/api/vip-cash-order', methods=['POST'])
+def vip_cash_order():
+    """VIP card paid in cash - creates the card, pending admin confirmation."""
+    username = (request.form.get('username') or '').strip().lower()
+    name = request.form.get('name')
+    phone = request.form.get('phone')
+    sex = request.form.get('sex')
+    tier = request.form.get('tier')
+    issue_date = request.form.get('issue_date')
+
+    if tier not in VIP_TIER_PRICES:
+        return jsonify({"message": "Invalid VIP tier selected."}), 400
+    expected_naira = VIP_TIER_PRICES[tier]
+
+    # Save passport photograph
+    passport = request.files.get('passport')
+    if passport and passport.filename:
+        os.makedirs("uploads", exist_ok=True)
+        unique_suffix = int(time.time())
+        file_extension = os.path.splitext(secure_filename(passport.filename))[1] or '.jpg'
+        passport_name = f"{username}_{unique_suffix}_passport{file_extension}"
+        passport.save(os.path.join("uploads", passport_name))
+
+    conn = sqlite3.connect(DATABASE_FILE)
+    cursor = conn.cursor()
+    cursor.execute("SELECT COUNT(*) FROM vip_cards")
+    count = cursor.fetchone()[0] + 1
+    card_sequence_number = f"{count:03d}"
+
+    qr_data = f"FGURL VIP CARD ID: {card_sequence_number}\nHolder: {name}\nContact: {phone}\nGender: {sex}\nPlan: {tier}"
+    qr = qrcode.QRCode(version=1, box_size=10, border=5)
+    qr.add_data(qr_data)
+    qr.make(fit=True)
+    qr_img = qr.make_image(fill_color="black", back_color="white")
+    os.makedirs("uploads", exist_ok=True)
+    qr_filename = f"uploads/{card_sequence_number}_qr.png"
+    qr_img.save(qr_filename)
+
+    cursor.execute("DELETE FROM vip_cards WHERE username = ?", (username,))
+    cursor.execute("""
+        INSERT INTO vip_cards (card_id, username, name, phone, sex, tier, issue_date, qr_path)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    """, (card_sequence_number, username, name, phone, sex, tier, issue_date, qr_filename))
+
+    timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    cursor.execute("""
+        INSERT INTO transactions (username, job_type, actual_price, vip_money, total_price, status, timestamp)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+    """, (username, f"VIP Card ({tier})", expected_naira, 0.0, expected_naira,
+          "Cash Payment Pending Confirmation", timestamp))
+    conn.commit()
+    conn.close()
+
+    print(f"\n[CASH VIP CARD] {username} | {tier} | N{expected_naira} - awaiting admin confirmation")
+    return jsonify({"message": f"VIP Card #{card_sequence_number} created! Pay N{expected_naira:,.0f} in cash - the admin will confirm your payment."}), 200
+
 @app.route('/api/paystack-webhook', methods=['POST'])
 def paystack_webhook():
     """Paystack calls this the INSTANT any payment succeeds - true real-time."""
