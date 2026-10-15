@@ -214,7 +214,7 @@
             const cards = data.vip_cards || [];
             if (cards.length) {
                 let out = `<table>
-                    <tr><th>Card</th><th>User</th><th>Name</th><th>Phone</th><th>Tier</th><th>Issued</th></tr>`;
+                    <tr><th>Card</th><th>User</th><th>Name</th><th>Phone</th><th>Tier</th><th>Issued</th><th>QR</th></tr>`;
                 cards.forEach(c => {
                     out += `<tr>
                         <td><strong>#${String(c.card_id).padStart(3, '0')}</strong></td>
@@ -223,6 +223,7 @@
                         <td>${esc(c.phone)}</td>
                         <td>${esc(c.tier)}</td>
                         <td>${esc(c.issue_date)}</td>
+                        <td><a href="${BACKEND_URL}/api/vip-card-qr/${c.card_id}?token=${encodeURIComponent(savedToken)}" target="_blank">View QR</a></td>
                     </tr>`;
                 });
                 out += '</table>';

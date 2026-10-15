@@ -585,6 +585,23 @@ def serve_job_file(file_id):
         return jsonify({"message": "File not found."}), 404
     return send_from_directory(JOB_FILES_DIR, matches[0], as_attachment=True)
 
+@app.route('/api/vip-card-qr/<card_id>', methods=['GET'])
+def serve_vip_card_qr(card_id):
+    """Admin-only download/view of a VIP card QR code."""
+    token = request.args.get('token') or request.headers.get('X-Admin-Token') or ''
+    if not ADMIN_TOKENS or token not in ADMIN_TOKENS:
+        return jsonify({"message": "Unauthorized."}), 401
+    if not card_id or len(card_id) != 3 or not card_id.isdigit():
+        return jsonify({"message": "Invalid card id."}), 400
+    conn = sqlite3.connect(DATABASE_FILE)
+    cursor = conn.cursor()
+    cursor.execute("SELECT qr_path FROM vip_cards WHERE card_id = ?", (card_id,))
+    row = cursor.fetchone()
+    conn.close()
+    if not row:
+        return jsonify({"message": "Card not found."}), 404
+    return send_from_directory('.', row[0])
+
 @app.route('/api/transactions', methods=['GET'])
 def get_transactions():
     username = request.args.get('user')
