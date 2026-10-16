@@ -1,4 +1,4 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
@@ -20,7 +20,7 @@
 
     <div class="container">
         <div id="vipBanner" class="reminder-banner">
-            <h3 style="color: #dd6b20;">ðŸš¨ GET OUR VIP CARD - GET JOBS DONE FASTER</h3>
+            <h3 style="color: #dd6b20;">🚨 GET OUR VIP CARD - GET JOBS DONE FASTER</h3>
             <p>Complete tasks faster without delay. <a href="VIP-CARD.html" style="color:#667eea">Click here to register now.</a></p>
         </div>
 
@@ -30,7 +30,7 @@
         </div>
 
         <div id="announcementsSection" style="margin-top:25px;">
-            <h2 style="font-size:20px; color:#1a202c; margin-bottom:15px;">ðŸ“¢ Latest News &amp; Updates</h2>
+            <h2 style="font-size:20px; color:#1a202c; margin-bottom:15px;">📢 Latest News &amp; Updates</h2>
             <div id="announcementsList"><p style="color:#999;">Loading updates...</p></div>
         </div>
 
@@ -143,7 +143,7 @@
                     output += `<tr>
                         <td><strong>#${String(log.id).padStart(4, '0')}</strong></td>
                         <td>${log.job_type}</td>
-                        <td>â‚¦${log.total_price.toLocaleString()}</td>
+                        <td>₦${log.total_price.toLocaleString()}</td>
                         <td style="color:${payColor};">${String(log.status).includes('Pending') ? 'Cash Pending' : 'Paid'}</td>
                         <td style="color:${psColor}; font-weight:bold;">${ps}</td>
                         <td style="white-space:nowrap;">

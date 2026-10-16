@@ -1,4 +1,4 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
@@ -41,9 +41,9 @@
         const totalPayable = actual + vipSurcharge;
 
         document.getElementById('outJob').innerText = job || '...';
-        document.getElementById('outActual').innerText = "â‚¦" + actual.toLocaleString();
-        document.getElementById('outVip').innerText = "â‚¦" + vipSurcharge.toLocaleString();
-        document.getElementById('outTotal').innerText = "â‚¦" + totalPayable.toLocaleString();
+        document.getElementById('outActual').innerText = "₦" + actual.toLocaleString();
+        document.getElementById('outVip').innerText = "₦" + vipSurcharge.toLocaleString();
+        document.getElementById('outTotal').innerText = "₦" + totalPayable.toLocaleString();
 
         let paystackPublicKey = '';
         let paystackSubaccount = '';
