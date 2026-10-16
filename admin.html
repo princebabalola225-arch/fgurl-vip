@@ -188,7 +188,12 @@
 
         function playAlertSound() {
             try {
-                const ctx = new (window.AudioContext || window.webkitAudioContext)();
+                // Resume audio context (mobile browsers suspend it until a user gesture)
+                if (!window._fgAudioCtx) {
+                    window._fgAudioCtx = new (window.AudioContext || window.webkitAudioContext)();
+                }
+                const ctx = window._fgAudioCtx;
+                if (ctx.state === 'suspended') { ctx.resume(); }
                 const notes = [880, 1174, 1568];
                 notes.forEach((freq, i) => {
                     const osc = ctx.createOscillator();
@@ -198,12 +203,33 @@
                     osc.frequency.value = freq;
                     osc.type = 'sine';
                     const start = ctx.currentTime + i * 0.16;
-                    gain.gain.setValueAtTime(0.12, start);
-                    gain.gain.exponentialRampToValueAtTime(0.0001, start + 0.15);
+                    gain.gain.setValueAtTime(0.3, start);
+                    gain.gain.exponentialRampToValueAtTime(0.0001, start + 0.16);
                     osc.start(start);
-                    osc.stop(start + 0.16);
+                    osc.stop(start + 0.17);
                 });
             } catch (e) { /* audio not available */ }
+        }
+
+        // Vibrate on phones (Android works, iPhone ignores it but no harm)
+        function vibrateAlert() {
+            try {
+                if (navigator.vibrate) { navigator.vibrate([250, 120, 250, 120, 400]); }
+            } catch (e) { /* not supported */ }
+        }
+
+        // Flash the browser tab/page title so you notice even when looking at another tab
+        let titleFlashing = false;
+        let originalTitle = document.title;
+        function flashTitle(text) {
+            if (titleFlashing) return;
+            titleFlashing = true;
+            let on = false;
+            const timer = setInterval(() => {
+                document.title = on ? originalTitle : '*** NEW ALERT: ' + text + ' ***';
+                on = !on;
+            }, 800);
+            setTimeout(() => { clearInterval(timer); document.title = originalTitle; titleFlashing = false; }, 12000);
         }
 
         function showToast(title, body) {
@@ -211,18 +237,24 @@
             if (!wrap) {
                 wrap = document.createElement('div');
                 wrap.id = 'toastWrap';
-                wrap.style.cssText = 'position:fixed;top:18px;right:18px;z-index:9999;display:flex;flex-direction:column;gap:10px;max-width:330px;';
+                wrap.style.cssText = 'position:fixed;top:12px;left:12px;right:12px;z-index:9999;display:flex;flex-direction:column;gap:10px;';
                 document.body.appendChild(wrap);
             }
             const toast = document.createElement('div');
-            toast.style.cssText = 'background:linear-gradient(135deg,#553c9a,#6b46c1);color:#fff;padding:14px 18px;border-radius:10px;box-shadow:0 4px 14px rgba(0,0,0,0.22);font-size:14px;';
-            toast.innerHTML = '<strong>' + title + '</strong><br><span style="font-size:13px;opacity:0.9;">' + body + '</span>';
+            toast.style.cssText = 'background:linear-gradient(135deg,#553c9a,#6b46c1);color:#fff;padding:18px;border-radius:12px;box-shadow:0 6px 18px rgba(0,0,0,0.3);font-size:16px;cursor:pointer;';
+            toast.innerHTML = '<div style="font-size:26px;line-height:1;">&#128276;</div>' +
+                             '<strong style="display:block;margin-top:6px;font-size:17px;">' + title + '</strong>' +
+                             '<span style="font-size:14px;opacity:0.92;margin-top:4px;display:block;">' + body + '</span>' +
+                             '<span style="font-size:11px;opacity:0.7;display:block;margin-top:8px;">tap to dismiss</span>';
+            toast.addEventListener('click', () => { if (toast.parentNode) toast.parentNode.removeChild(toast); });
             wrap.appendChild(toast);
-            setTimeout(() => { if (toast.parentNode) toast.parentNode.removeChild(toast); }, 9000);
+            setTimeout(() => { if (toast.parentNode) toast.parentNode.removeChild(toast); }, 12000);
         }
 
         function notifyAdmin(title, body) {
             playAlertSound();
+            vibrateAlert();
+            flashTitle(title);
             showToast(title, body);
             if (alertsEnabled && typeof Notification !== 'undefined' && Notification.permission === 'granted') {
                 try {
@@ -234,18 +266,31 @@
 
         function enableNotifications() {
             alertsEnabled = true;
+            // Unlock audio immediately (must happen inside a user gesture on mobile)
             playAlertSound();
+            vibrateAlert();
             const status = document.getElementById('notifStatus');
+            // Keep the audio context alive on any future touch/click
+            const unlock = () => {
+                try {
+                    if (!window._fgAudioCtx) {
+                        window._fgAudioCtx = new (window.AudioContext || window.webkitAudioContext)();
+                    }
+                    if (window._fgAudioCtx.state === 'suspended') { window._fgAudioCtx.resume(); }
+                } catch (e) {}
+            };
+            document.addEventListener('click', unlock);
+            document.addEventListener('touchstart', unlock);
             if (typeof Notification !== 'undefined') {
                 Notification.requestPermission().then(perm => {
                     if (perm === 'granted') {
-                        status.innerHTML = '<strong style="color:#2f855a;">Alerts ON</strong> &mdash; you will be notified about new orders, cash payments, messages and reviews even in a background tab.';
+                        status.innerHTML = '<strong style="color:#2f855a;">Alerts ON</strong> &mdash; sound, vibration, title flash and popups are active.';
                     } else {
-                        status.innerHTML = 'Sound + on-page alerts are ON. Browser popups were blocked &mdash; allow notifications in your browser address bar.';
+                        status.innerHTML = '<strong style="color:#2f855a;">Alerts ON</strong> &mdash; sound, vibration and title flash are active. Browser popups blocked (allow them in your browser settings for popups too).';
                     }
                 });
             } else {
-                status.innerHTML = '<strong style="color:#2f855a;">Alerts ON</strong> &mdash; sound and on-page alerts are active.';
+                status.innerHTML = '<strong style="color:#2f855a;">Alerts ON</strong> &mdash; sound, vibration and title flash are active.';
             }
         }
 
