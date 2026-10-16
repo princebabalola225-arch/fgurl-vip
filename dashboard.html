@@ -14,6 +14,7 @@
             <li><a href="#" id="navHome" class="active">Home</a></li>
             <li><a href="jobs.html">Jobs</a></li>
             <li><a href="#" id="navTransact">My Transact</a></li>
+            <li><a href="#" id="navSupport">Support</a></li>
         </ul>
     </nav>
 
@@ -37,6 +38,16 @@
             <h1>My Transaction Records</h1>
             <div class="table-container" style="margin-top:20px;">
                 <div id="historyLog">Loading historical account data...</div>
+            </div>
+        </div>
+
+        <div id="supportPanel" style="display: none;">
+            <h1>Support Center</h1>
+            <p style="color:#718096; font-size:14px;">Send us a message and we will reply here.</p>
+            <div class="table-container" style="margin-top:15px;">
+                <textarea id="ticketMsg" rows="3" class="input-field" placeholder="Type your message..."></textarea>
+                <button class="btn" style="background:#553c9a; color:white; margin-top:10px;" onclick="sendTicket()">Send Message</button>
+                <div id="ticketList" style="margin-top:20px;"><p style="color:#999;">Loading...</p></div>
             </div>
         </div>
     </div>
@@ -103,6 +114,15 @@
             e.preventDefault();
             document.getElementById('homePanel').style.display = 'block';
             document.getElementById('transactPanel').style.display = 'none';
+            document.getElementById('supportPanel').style.display = 'none';
+        });
+
+        document.getElementById('navSupport').addEventListener('click', (e) => {
+            e.preventDefault();
+            document.getElementById('homePanel').style.display = 'none';
+            document.getElementById('transactPanel').style.display = 'none';
+            document.getElementById('supportPanel').style.display = 'block';
+            loadTickets();
         });
 
         document.getElementById('navTransact').addEventListener('click', async (e) => {
@@ -115,19 +135,72 @@
             if (response.ok) {
                 const logs = await response.json();
                 let output = `<table>
-                    <tr style="background:#eee;"><th>Ref ID</th><th>Job Details</th><th>Total Price</th><th>Status</th></tr>`;
+                    <tr style="background:#eee;"><th>Ref ID</th><th>Job Details</th><th>Total Price</th><th>Payment</th><th>Order Status</th><th></th></tr>`;
                 logs.forEach(log => {
+                    const ps = log.production_status || 'Awaiting Production';
+                    const psColor = ps.includes('Completed') ? 'green' : ps.includes('Cancelled') ? '#c53030' : ps.includes('Ready') ? '#2b6cb0' : '#dd6b20';
+                    const payColor = String(log.status).includes('Pending') ? '#c05621' : 'green';
                     output += `<tr>
                         <td><strong>#${String(log.id).padStart(4, '0')}</strong></td>
                         <td>${log.job_type}</td>
                         <td>₦${log.total_price.toLocaleString()}</td>
-                        <td style="color:${log.status.includes('Confirmed') ? 'green' : '#dd6b20'}; font-weight:bold;">${log.status}</td>
+                        <td style="color:${payColor};">${String(log.status).includes('Pending') ? 'Cash Pending' : 'Paid'}</td>
+                        <td style="color:${psColor}; font-weight:bold;">${ps}</td>
+                        <td style="white-space:nowrap;">
+                            <a href="receipt.html?id=${log.id}" target="_blank" style="color:#553c9a; font-size:12px;">Receipt</a>
+                            ${ps === 'Completed' ? `<button class="btn" style="background:#553c9a; color:white; padding:4px 10px; font-size:12px; margin-left:5px;" onclick="openReview(${log.id})">Rate</button>` : ''}
+                        </td>
                     </tr>`;
                 });
                 output += '</table>';
                 document.getElementById('historyLog').innerHTML = logs.length ? output : '<p>No orders registered yet.</p>';
             }
         });
+
+        // ----- REVIEWS -----
+        function openReview(txnId) {
+            const stars = prompt("Rate this order (1-5 stars):", "5");
+            const rating = parseInt(stars, 10);
+            if (!rating || rating < 1 || rating > 5) { alert("Please enter 1-5."); return; }
+            const comment = prompt("Short comment (optional):", "") || "Great service";
+            fetch(`${BACKEND_URL}/api/review`, {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ user: localStorage.getItem('active_user') || 'guest', txn_id: txnId, rating, comment }),
+            }).then(r => r.json()).then(d => { alert(d.message); });
+        }
+
+        // ----- SUPPORT TICKETS -----
+        async function loadTickets() {
+            const user = localStorage.getItem('active_user') || 'guest';
+            try {
+                const res = await fetch(`${BACKEND_URL}/api/my-tickets?user=${encodeURIComponent(user)}`);
+                const tickets = await res.json();
+                const wrap = document.getElementById('ticketList');
+                if (!tickets.length) { wrap.innerHTML = '<p style="color:#999;">No messages yet.</p>'; return; }
+                wrap.innerHTML = tickets.map(t => `
+                    <div style="background:#fff; border:1px solid #e2e8f0; border-radius:8px; padding:12px; margin-bottom:10px;">
+                        <p style="font-size:13px; color:#2d3748;"><strong>You:</strong> ${t.message.replace(/</g,'&lt;')}</p>
+                        <p style="font-size:11px; color:#a0aec0;">${t.created_at}</p>
+                        ${t.reply ? `<p style="font-size:13px; color:#276749; margin-top:8px;"><strong>Admin:</strong> ${t.reply.replace(/</g,'&lt;')}</p>` : '<p style="font-size:12px; color:#dd6b20; margin-top:8px;">Awaiting reply...</p>'}
+                    </div>
+                `).join('');
+            } catch (e) { /* ignore */ }
+        }
+
+        async function sendTicket() {
+            const msg = document.getElementById('ticketMsg').value.trim();
+            if (!msg) { alert('Type a message first.'); return; }
+            const res = await fetch(`${BACKEND_URL}/api/ticket`, {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ username: localStorage.getItem('active_user') || 'guest', message: msg }),
+            });
+            const data = await res.json();
+            alert(data.message);
+            document.getElementById('ticketMsg').value = '';
+            loadTickets();
+        }
     </script>
 </body>
 </html>

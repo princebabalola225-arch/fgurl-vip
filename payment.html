@@ -22,8 +22,8 @@
             </div>
 
             <!-- Paystack Gateway Button Trigger -->
-            <button class="btn" style="background:#38a169;" onclick="launchPaystackCheckout()">Securely Pay via Paystack Gateway</button>
-            <button class="btn" style="background:#2d3748; color:white; margin-top:10px;" onclick="payInCash()">Pay in Cash</button>
+            <button class="btn" style="background:#38a169;" id="paystackBtn" onclick="launchPaystackCheckout()">Securely Pay via Paystack Gateway</button>
+            <button class="btn" style="background:#2d3748; color:white; margin-top:10px;" id="cashBtn" onclick="payInCash()">Pay in Cash</button>
             <button class="btn" style="background:#edf2f7; color:#4a5568; margin-top:10px;" onclick="window.location.href='jobs.html'">Cancel Order</button>
         </div>
     </div>
@@ -65,6 +65,17 @@
             }
         }
         loadPaystackConfig();
+
+        // Show/hide payment buttons based on admin settings
+        async function applyPaymentMethods() {
+            try {
+                const res = await fetch(`${BACKEND_URL}/api/payment-methods`);
+                const methods = await res.json();
+                document.getElementById('paystackBtn').style.display = methods.paystack !== false ? '' : 'none';
+                document.getElementById('cashBtn').style.display = methods.cash !== false ? '' : 'none';
+            } catch (e) { /* ignore */ }
+        }
+        applyPaymentMethods();
 
         function launchPaystackCheckout() {
             if (!paystackPublicKey) {
@@ -151,7 +162,9 @@
             });
 
             if (response.ok) {
-                window.location.href = 'dashboard.html';
+                const data = await response.json();
+                alert(data.message + '\n\nYour receipt is ready.');
+                window.location.href = 'receipt.html?id=' + (await fetch(`${BACKEND_URL}/api/transactions?user=${encodeURIComponent(localStorage.getItem('active_user') || 'guest')}`).then(r => r.json()).then(l => l[0]?.id || 0));
             } else {
                 alert("Cloud database accounting synchronization failure.");
             }

@@ -9,7 +9,7 @@ import time
 import hmac
 import hashlib
 import requests
-from flask import Flask, request, jsonify, send_from_directory
+from flask import Flask, request, jsonify, send_from_directory, Response
 from flask_cors import CORS
 from werkzeug.utils import secure_filename
 
@@ -54,7 +54,8 @@ VIP_TIER_VALIDITY_DAYS = {"blue": 30, "red": 90, "yellow": 180, "black": 365}
 # logins.txt, uploads/, app.py) stays private.
 STATIC_PAGES = {
     "VLAND.html", "dashboard.html", "jobs.html", "payment.html",
-    "renew.html", "VIP-CARD.html", "admin.html", "VLAND.css", "VLAND.js",
+    "renew.html", "VIP-CARD.html", "admin.html", "receipt.html",
+    "VLAND.css", "VLAND.js",
 }
 
 def init_db():
@@ -90,6 +91,28 @@ def init_db():
             description TEXT, created_at TEXT
         )
     """)
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS order_photos (
+            id INTEGER PRIMARY KEY AUTOINCREMENT, txn_id INTEGER, file_id TEXT, file_name TEXT, uploaded_at TEXT
+        )
+    """)
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS reviews (
+            id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT, txn_id INTEGER,
+            rating INTEGER, comment TEXT, created_at TEXT
+        )
+    """)
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS tickets (
+            id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT, message TEXT,
+            reply TEXT DEFAULT '', status TEXT DEFAULT 'Open', created_at TEXT, replied_at TEXT
+        )
+    """)
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS payment_settings (
+            method TEXT PRIMARY KEY, enabled INTEGER DEFAULT 1
+        )
+    """)
     # Migrate databases created by older versions of this app:
     # the old "transactions" table had no "timestamp" column.
     cursor.execute("PRAGMA table_info(transactions)")
@@ -107,6 +130,11 @@ def init_db():
     if "file_id" not in txn_cols:
         try:
             cursor.execute("ALTER TABLE transactions ADD COLUMN file_id TEXT")
+        except sqlite3.OperationalError:
+            pass  # another gunicorn worker already added it
+    if "production_status" not in txn_cols:
+        try:
+            cursor.execute("ALTER TABLE transactions ADD COLUMN production_status TEXT DEFAULT 'Awaiting Production'")
         except sqlite3.OperationalError:
             pass  # another gunicorn worker already added it
     conn.commit()
@@ -608,7 +636,7 @@ def get_transactions():
     conn = sqlite3.connect(DATABASE_FILE)
     conn.row_factory = sqlite3.Row
     cursor = conn.cursor()
-    cursor.execute("SELECT id, job_type, total_price, status, timestamp FROM transactions WHERE username = ? ORDER BY id DESC", (username,))
+    cursor.execute("SELECT id, job_type, total_price, status, timestamp, production_status FROM transactions WHERE username = ? ORDER BY id DESC", (username,))
     rows = cursor.fetchall()
     conn.close()
     return jsonify([dict(ix) for ix in rows])
@@ -622,7 +650,7 @@ def admin_transactions():
     conn = sqlite3.connect(DATABASE_FILE)
     conn.row_factory = sqlite3.Row
     cursor = conn.cursor()
-    cursor.execute("SELECT id, username, job_type, total_price, status, timestamp, paystack_ref, file_id FROM transactions ORDER BY id DESC LIMIT 200")
+    cursor.execute("SELECT id, username, job_type, total_price, status, timestamp, paystack_ref, file_id, production_status FROM transactions ORDER BY id DESC LIMIT 200")
     txns = [dict(r) for r in cursor.fetchall()]
     cursor.execute("SELECT card_id, username, name, phone, tier, issue_date FROM vip_cards ORDER BY card_id DESC")
     cards = [dict(r) for r in cursor.fetchall()]
@@ -741,6 +769,280 @@ def serve_announcement_image(file_id):
     if not matches:
         return jsonify({"message": "File not found."}), 404
     return send_from_directory(ANNOUNCEMENTS_DIR, matches[0])
+
+@app.route('/api/payment-methods', methods=['GET'])
+def payment_methods():
+    """Public: which payment methods are currently enabled."""
+    conn = sqlite3.connect(DATABASE_FILE)
+    cursor = conn.cursor()
+    cursor.execute("SELECT method, enabled FROM payment_settings")
+    rows = {r[0]: bool(r[1]) for r in cursor.fetchall()}
+    conn.close()
+    return jsonify({
+        "paystack": rows.get("paystack", True),
+        "cash": rows.get("cash", True),
+    })
+
+@app.route('/api/admin/payment-methods', methods=['POST'])
+def admin_payment_methods():
+    token = request.args.get('token') or request.headers.get('X-Admin-Token') or ''
+    if not ADMIN_TOKENS or token not in ADMIN_TOKENS:
+        return jsonify({"message": "Unauthorized."}), 401
+    data = get_json_body()
+    paystack = 1 if data.get("paystack", True) else 0
+    cash = 1 if data.get("cash", True) else 0
+    conn = sqlite3.connect(DATABASE_FILE)
+    cursor = conn.cursor()
+    cursor.execute("INSERT INTO payment_settings (method, enabled) VALUES ('paystack', ?) ON CONFLICT(method) DO UPDATE SET enabled = ?", (paystack, paystack))
+    cursor.execute("INSERT INTO payment_settings (method, enabled) VALUES ('cash', ?) ON CONFLICT(method) DO UPDATE SET enabled = ?", (cash, cash))
+    conn.commit()
+    conn.close()
+    return jsonify({"message": "Payment methods updated."}), 200
+
+@app.route('/api/admin/stats', methods=['GET'])
+def admin_stats():
+    """Business summary for the admin dashboard."""
+    token = request.args.get('token') or request.headers.get('X-Admin-Token') or ''
+    if not ADMIN_TOKENS or token not in ADMIN_TOKENS:
+        return jsonify({"message": "Unauthorized."}), 401
+    conn = sqlite3.connect(DATABASE_FILE)
+    cursor = conn.cursor()
+    cursor.execute("SELECT COUNT(*), COALESCE(SUM(total_price),0) FROM transactions WHERE status NOT LIKE '%Pending%'")
+    total_orders, total_revenue = cursor.fetchone()
+    cursor.execute("SELECT COUNT(*) FROM transactions WHERE status = 'Cash Payment Pending Confirmation'")
+    pending_cash = cursor.fetchone()[0]
+    cursor.execute("SELECT COUNT(*) FROM vip_cards")
+    vip_cards = cursor.fetchone()[0]
+    cursor.execute("SELECT COUNT(*) FROM users")
+    customers = cursor.fetchone()[0]
+    today = datetime.datetime.now().strftime("%Y-%m-%d")
+    cursor.execute("SELECT COUNT(*), COALESCE(SUM(total_price),0) FROM transactions WHERE timestamp LIKE ?", (today + "%",))
+    today_orders, today_revenue = cursor.fetchone()
+    cursor.execute("SELECT COUNT(*) FROM tickets WHERE status = 'Open'")
+    open_tickets = cursor.fetchone()[0]
+    conn.close()
+    return jsonify({
+        "total_orders": total_orders, "total_revenue": total_revenue,
+        "orders_today": today_orders, "revenue_today": today_revenue,
+        "pending_cash": pending_cash, "vip_cards": vip_cards,
+        "customers": customers, "open_tickets": open_tickets,
+    })
+
+@app.route('/api/admin/export-csv', methods=['GET'])
+def export_csv():
+    """Export all orders as CSV."""
+    token = request.args.get('token') or request.headers.get('X-Admin-Token') or ''
+    if not ADMIN_TOKENS or token not in ADMIN_TOKENS:
+        return jsonify({"message": "Unauthorized."}), 401
+    conn = sqlite3.connect(DATABASE_FILE)
+    conn.row_factory = sqlite3.Row
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM transactions ORDER BY id DESC")
+    rows = cursor.fetchall()
+    conn.close()
+    lines = ["id,username,job_type,actual_price,vip_money,total_price,status,production_status,timestamp,paystack_ref,file_id"]
+    for r in rows:
+        lines.append(",".join(str(r[k] or "") for k in ["id","username","job_type","actual_price","vip_money","total_price","status","production_status","timestamp","paystack_ref","file_id"]))
+    return Response("\n".join(lines), mimetype="text/csv",
+                    headers={"Content-Disposition": "attachment; filename=orders.csv"})
+
+@app.route('/api/admin/order-status', methods=['POST'])
+def admin_order_status():
+    """Update an order's production status."""
+    token = request.args.get('token') or request.headers.get('X-Admin-Token') or ''
+    if not ADMIN_TOKENS or token not in ADMIN_TOKENS:
+        return jsonify({"message": "Unauthorized."}), 401
+    data = get_json_body()
+    txn_id = data.get('id')
+    production_status = data.get('production_status') or ''
+    allowed = ["Awaiting Production", "In Production", "Ready for Pickup", "Completed"]
+    if production_status not in allowed:
+        return jsonify({"message": "Invalid status."}), 400
+    conn = sqlite3.connect(DATABASE_FILE)
+    cursor = conn.cursor()
+    cursor.execute("UPDATE transactions SET production_status = ? WHERE id = ?", (production_status, txn_id))
+    updated = cursor.rowcount
+    conn.commit()
+    conn.close()
+    if not updated:
+        return jsonify({"message": "Order not found."}), 404
+    return jsonify({"message": "Status updated."}), 200
+
+@app.route('/api/admin/cancel-order', methods=['POST'])
+def admin_cancel_order():
+    """Cancel an order with a reason (max 50 words)."""
+    token = request.args.get('token') or request.headers.get('X-Admin-Token') or ''
+    if not ADMIN_TOKENS or token not in ADMIN_TOKENS:
+        return jsonify({"message": "Unauthorized."}), 401
+    data = get_json_body()
+    txn_id = data.get('id')
+    reason = str(data.get('reason') or '').strip()
+    if not txn_id or not reason:
+        return jsonify({"message": "Order id and reason required."}), 400
+    if len(reason.split()) > 50:
+        return jsonify({"message": "Reason must be 50 words or less."}), 400
+    conn = sqlite3.connect(DATABASE_FILE)
+    cursor = conn.cursor()
+    cursor.execute("UPDATE transactions SET production_status = 'Cancelled' WHERE id = ?", (txn_id,))
+    cursor.execute("UPDATE transactions SET status = status || ' | Cancelled: " + reason.replace("'", "") + "' WHERE id = ?", (txn_id,))
+    updated = cursor.rowcount
+    conn.commit()
+    conn.close()
+    if not updated:
+        return jsonify({"message": "Order not found."}), 404
+    return jsonify({"message": "Order cancelled."}), 200
+
+@app.route('/api/admin/order-photo', methods=['POST'])
+def admin_order_photo():
+    """Upload a finished-product photo for an order."""
+    token = request.args.get('token') or request.headers.get('X-Admin-Token') or ''
+    if not ADMIN_TOKENS or token not in ADMIN_TOKENS:
+        return jsonify({"message": "Unauthorized."}), 401
+    txn_id = request.form.get('txn_id')
+    uploaded = request.files.get('file')
+    if not txn_id or not uploaded or not uploaded.filename:
+        return jsonify({"message": "Missing transaction id or file."}), 400
+    file_id = uuid.uuid4().hex
+    os.makedirs(JOB_FILES_DIR, exist_ok=True)
+    safe_name = secure_filename(uploaded.filename) or "finished_order"
+    stored_name = f"{file_id}_{safe_name}"
+    uploaded.save(os.path.join(JOB_FILES_DIR, stored_name))
+    timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    conn = sqlite3.connect(DATABASE_FILE)
+    cursor = conn.cursor()
+    cursor.execute("INSERT INTO order_photos (txn_id, file_id, file_name, uploaded_at) VALUES (?,?,?,?)",
+                   (txn_id, file_id, safe_name, timestamp))
+    conn.commit()
+    conn.close()
+    return jsonify({"message": "Photo uploaded."}), 200
+
+@app.route('/api/order-photo/<int:txn_id>', methods=['GET'])
+def order_photo(txn_id):
+    """Public: latest finished-product photo for an order."""
+    conn = sqlite3.connect(DATABASE_FILE)
+    cursor = conn.cursor()
+    cursor.execute("SELECT file_id FROM order_photos WHERE txn_id = ? ORDER BY id DESC LIMIT 1", (txn_id,))
+    row = cursor.fetchone()
+    conn.close()
+    if not row:
+        return jsonify({"message": "No photo yet."}), 404
+    file_id = row[0]
+    try:
+        matches = [f for f in os.listdir(JOB_FILES_DIR) if f.startswith(file_id + "_")]
+    except FileNotFoundError:
+        matches = []
+    if not matches:
+        return jsonify({"message": "File not found."}), 404
+    return send_from_directory(JOB_FILES_DIR, matches[0])
+
+@app.route('/api/ticket', methods=['POST'])
+def create_ticket():
+    """Customer sends a support message."""
+    data = get_json_body()
+    username = (data.get('username') or '').strip().lower()
+    message = str(data.get('message') or '').strip()
+    if not username or not message:
+        return jsonify({"message": "Username and message required."}), 400
+    if len(message.split()) > 100:
+        return jsonify({"message": "Message must be 100 words or less."}), 400
+    timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    conn = sqlite3.connect(DATABASE_FILE)
+    cursor = conn.cursor()
+    cursor.execute("INSERT INTO tickets (username, message, created_at) VALUES (?,?,?)", (username, message, timestamp))
+    conn.commit()
+    conn.close()
+    return jsonify({"message": "Message sent. We will reply soon."}), 200
+
+@app.route('/api/my-tickets', methods=['GET'])
+def my_tickets():
+    username = (request.args.get('user') or '').strip().lower()
+    conn = sqlite3.connect(DATABASE_FILE)
+    conn.row_factory = sqlite3.Row
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM tickets WHERE username = ? ORDER BY id DESC LIMIT 50", (username,))
+    rows = [dict(r) for r in cursor.fetchall()]
+    conn.close()
+    return jsonify(rows)
+
+@app.route('/api/admin/tickets', methods=['GET'])
+def admin_tickets():
+    token = request.args.get('token') or request.headers.get('X-Admin-Token') or ''
+    if not ADMIN_TOKENS or token not in ADMIN_TOKENS:
+        return jsonify({"message": "Unauthorized."}), 401
+    conn = sqlite3.connect(DATABASE_FILE)
+    conn.row_factory = sqlite3.Row
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM tickets ORDER BY id DESC LIMIT 100")
+    rows = [dict(r) for r in cursor.fetchall()]
+    conn.close()
+    return jsonify(rows)
+
+@app.route('/api/admin/ticket-reply', methods=['POST'])
+def admin_ticket_reply():
+    token = request.args.get('token') or request.headers.get('X-Admin-Token') or ''
+    if not ADMIN_TOKENS or token not in ADMIN_TOKENS:
+        return jsonify({"message": "Unauthorized."}), 401
+    data = get_json_body()
+    ticket_id = data.get('id')
+    reply = str(data.get('reply') or '').strip()
+    if not ticket_id or not reply:
+        return jsonify({"message": "Ticket id and reply required."}), 400
+    timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    conn = sqlite3.connect(DATABASE_FILE)
+    cursor = conn.cursor()
+    cursor.execute("UPDATE tickets SET reply = ?, status = 'Replied', replied_at = ? WHERE id = ?",
+                   (reply, timestamp, ticket_id))
+    updated = cursor.rowcount
+    conn.commit()
+    conn.close()
+    if not updated:
+        return jsonify({"message": "Ticket not found."}), 404
+    return jsonify({"message": "Reply sent."}), 200
+
+@app.route('/api/review', methods=['POST'])
+def create_review():
+    data = get_json_body()
+    username = (data.get('user') or '').strip().lower()
+    txn_id = data.get('txn_id')
+    try:
+        rating = int(data.get('rating') or 0)
+    except (TypeError, ValueError):
+        rating = 0
+    comment = str(data.get('comment') or '').strip()
+    if not username or not txn_id or rating < 1 or rating > 5:
+        return jsonify({"message": "Invalid review data."}), 400
+    if not comment or len(comment.split()) > 100:
+        return jsonify({"message": "Comment required (max 100 words)."}), 400
+    timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    conn = sqlite3.connect(DATABASE_FILE)
+    cursor = conn.cursor()
+    cursor.execute("INSERT INTO reviews (username, txn_id, rating, comment, created_at) VALUES (?,?,?,?,?)",
+                   (username, txn_id, rating, comment, timestamp))
+    conn.commit()
+    conn.close()
+    return jsonify({"message": "Thank you for your review!"}), 200
+
+@app.route('/api/reviews', methods=['GET'])
+def get_reviews():
+    conn = sqlite3.connect(DATABASE_FILE)
+    conn.row_factory = sqlite3.Row
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM reviews ORDER BY id DESC LIMIT 20")
+    rows = [dict(r) for r in cursor.fetchall()]
+    conn.close()
+    return jsonify(rows)
+
+@app.route('/api/transaction/<int:txn_id>', methods=['GET'])
+def get_transaction(txn_id):
+    conn = sqlite3.connect(DATABASE_FILE)
+    conn.row_factory = sqlite3.Row
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM transactions WHERE id = ?", (txn_id,))
+    row = cursor.fetchone()
+    conn.close()
+    if not row:
+        return jsonify({"message": "Not found."}), 404
+    return jsonify(dict(row))
 
 # ---------------------------------------------------------------------------
 # Serve the frontend pages (Render only runs what app.py exposes)

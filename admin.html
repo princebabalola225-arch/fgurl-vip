@@ -3,17 +3,9 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>FGURL VIP | Admin Order Center</title>
+    <title>FGURL VIP | Admin Control Center</title>
     <link rel="stylesheet" href="VLAND.css">
     <style>
-        :root {
-            --brand-1: #553c9a;
-            --brand-2: #6b46c1;
-            --accent: #ed8936;
-            --accent-2: #38b2ac;
-            --good: #2f855a;
-            --bad: #c53030;
-        }
         body { background: linear-gradient(180deg, #f7f4ff 0%, #ffffff 30%); }
         .admin-header {
             background: linear-gradient(135deg, #553c9a 0%, #6b46c1 60%, #805ad5 100%);
@@ -22,47 +14,45 @@
         }
         .admin-header h2 { margin: 0; font-size: 22px; }
         .admin-header p { margin: 5px 0 0; opacity: 0.85; font-size: 14px; }
-        .section {
-            border-radius: 14px; padding: 20px; margin-bottom: 20px;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.06);
-        }
+        .stats-grid { display:grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap:12px; margin-bottom:20px; }
+        .stat-card { background:#fff; border-radius:12px; padding:15px; text-align:center; box-shadow:0 2px 8px rgba(0,0,0,0.06); border-top: 3px solid #553c9a; }
+        .stat-card .num { font-size:24px; font-weight:bold; color:#553c9a; }
+        .stat-card .lbl { font-size:12px; color:#718096; margin-top:4px; }
+        .stat-card.green { border-top-color:#2f855a; } .stat-card.green .num { color:#2f855a; }
+        .stat-card.orange { border-top-color:#dd6b20; } .stat-card.orange .num { color:#dd6b20; }
+        .stat-card.red { border-top-color:#c53030; } .stat-card.red .num { color:#c53030; }
+        .stat-card.blue { border-top-color:#2b6cb0; } .stat-card.blue .num { color:#2b6cb0; }
+        .section { border-radius: 14px; padding: 20px; margin-bottom: 20px; box-shadow: 0 2px 10px rgba(0,0,0,0.06); }
         .section-orders { background: linear-gradient(135deg, #ebf8ff 0%, #ffffff 100%); border: 1px solid #bee3f8; }
         .section-cards { background: linear-gradient(135deg, #faf5ff 0%, #ffffff 100%); border: 1px solid #e9d8fd; }
         .section-avail { background: linear-gradient(135deg, #fffaf0 0%, #ffffff 100%); border: 1px solid #feebc8; }
         .section-news { background: linear-gradient(135deg, #f0fff4 0%, #ffffff 100%); border: 1px solid #c6f6d5; }
+        .section-tickets { background: linear-gradient(135deg, #fff0f0 0%, #ffffff 100%); border: 1px solid #fed7d7; }
+        .section-reviews { background: linear-gradient(135deg, #fffff0 0%, #ffffff 100%); border: 1px solid #fefcbf; }
         .section h3 { margin-top: 0; }
-        .badge { display: inline-block; padding: 3px 10px; border-radius: 20px; font-size: 12px; font-weight: 600; }
-        .badge-on { background: #c6f6d5; color: #22543d; }
-        .badge-off { background: #fed7d7; color: #822727; }
-        table { width: 100%; border-collapse: collapse; font-size: 14px; }
-        th, td { padding: 10px; border: 1px solid #e2e8f0; text-align: left; }
+        table { width: 100%; border-collapse: collapse; font-size: 13px; }
+        th, td { padding: 8px; border: 1px solid #e2e8f0; text-align: left; }
         th { background: #edf2f7; }
-        .avail-row {
-            display: flex; align-items: center; gap: 12px; padding: 12px;
-            border-radius: 10px; margin-bottom: 8px; background: #fff;
-            border: 1px solid #e2e8f0; flex-wrap: wrap;
-        }
-        .avail-row .job-name { flex: 1; min-width: 200px; font-weight: 600; color: #2d3748; }
-        .avail-row input[type="text"] {
-            flex: 2; min-width: 200px; padding: 8px 12px; border: 1px solid #cbd5e0;
-            border-radius: 8px; font-size: 13px;
-        }
-        .avail-row input[type="checkbox"] { width: 20px; height: 20px; accent-color: #553c9a; }
         .btn { cursor: pointer; border: none; }
-        .btn-accent { background: #ed8936; color: white; }
-        .btn-accent:hover { background: #dd6b20; }
+        .btn-small { padding: 4px 10px; font-size: 12px; border-radius: 6px; }
         .btn-brand { background: #553c9a; color: white; }
-        .btn-brand:hover { background: #44337a; }
-        .btn-small { padding: 6px 14px; font-size: 13px; border-radius: 8px; }
-        .msg-ok { color: var(--good); font-weight: 600; }
-        .msg-err { color: var(--bad); font-weight: 600; }
-        .news-preview { max-width: 200px; max-height: 150px; border-radius: 8px; margin-top: 8px; }
+        .btn-accent { background: #ed8936; color: white; }
+        .btn-green { background: #2f855a; color: white; }
+        .btn-red { background: #c53030; color: white; }
+        select.input-field { padding: 6px; }
+        .avail-row { display: flex; align-items: center; gap: 12px; padding: 10px; border-radius: 10px; margin-bottom: 8px; background: #fff; border: 1px solid #e2e8f0; flex-wrap: wrap; }
+        .avail-row .job-name { flex: 1; min-width: 180px; font-weight: 600; color: #2d3748; font-size: 13px; }
+        .avail-row input[type="text"] { flex: 2; min-width: 180px; padding: 6px 10px; border: 1px solid #cbd5e0; border-radius: 8px; font-size: 13px; }
+        .avail-row input[type="checkbox"] { width: 18px; height: 18px; accent-color: #553c9a; }
+        .ticket-row { background:#fff; border:1px solid #e2e8f0; border-radius:8px; padding:12px; margin-bottom:8px; }
+        .stars { color: #d69e2e; letter-spacing: 2px; }
+        .toolbar { display:flex; gap:10px; flex-wrap:wrap; margin-bottom:12px; align-items:center; }
     </style>
 </head>
 <body>
     <div class="admin-header">
         <h2>⚡ FGURL VIP — Admin Control Center</h2>
-        <p>Orders · VIP Cards · Job Availability · News &amp; Updates</p>
+        <p>Dashboard · Orders · VIP Cards · Availability · News · Tickets · Reviews</p>
     </div>
 
     <div class="container">
@@ -75,14 +65,41 @@
                 <button class="btn btn-brand" onclick="loadAdminData()">Load Orders</button>
             </div>
             <p id="adminMsg" class="message" style="margin-top:10px;"></p>
-            <p id="autoRefresh" style="display:none; font-size:13px; color:#666;">
-                🔄 Auto-refreshing every 15 seconds — <a href="#" onclick="stopRefresh(); return false;">stop</a>
-            </p>
+        </div>
+
+        <!-- STATS -->
+        <div class="stats-grid" id="statsGrid">
+            <div class="stat-card"><div class="num">-</div><div class="lbl">Loading stats...</div></div>
+        </div>
+
+        <!-- PAYMENT METHODS -->
+        <div class="section" style="background:#fff; border:1px solid #e2e8f0;">
+            <h3 style="color:#553c9a; margin-top:0;">💳 Payment Methods</h3>
+            <p style="color:#718096; font-size:14px;">Choose which payment options customers can use.</p>
+            <div style="display:flex; gap:20px; margin-top:12px; flex-wrap:wrap;">
+                <label style="font-size:15px; font-weight:600;"><input type="checkbox" id="paystackEnabled" checked style="width:20px; height:20px; accent-color:#553c9a;"> Paystack (Card/Transfer)</label>
+                <label style="font-size:15px; font-weight:600;"><input type="checkbox" id="cashEnabled" checked style="width:20px; height:20px; accent-color:#553c9a;"> Pay in Cash</label>
+            </div>
+            <button class="btn btn-brand btn-small" onclick="savePaymentMethods()" style="margin-top:12px;">💾 Save Payment Methods</button>
+            <p id="payMethodMsg" style="margin-top:8px;"></p>
         </div>
 
         <!-- ORDERS -->
         <div class="section section-orders">
             <h3 style="color:#2b6cb0;">💰 Payments / Orders</h3>
+            <div class="toolbar">
+                <input type="text" id="orderSearch" placeholder="Search user or job..." class="input-field" style="width:220px;" oninput="renderOrders()">
+                <select id="orderFilter" class="input-field" style="width:180px;" onchange="renderOrders()">
+                    <option value="">All statuses</option>
+                    <option value="Cash Payment Pending">Cash Pending</option>
+                    <option value="Awaiting Production">Awaiting Production</option>
+                    <option value="In Production">In Production</option>
+                    <option value="Ready for Pickup">Ready for Pickup</option>
+                    <option value="Completed">Completed</option>
+                    <option value="Cancelled">Cancelled</option>
+                </select>
+                <button class="btn btn-green btn-small" onclick="exportCSV()">📤 Export CSV</button>
+            </div>
             <div class="table-container" id="txnTable" style="margin-top:10px;">
                 <p style="color:#999;">Load orders to see data.</p>
             </div>
@@ -99,7 +116,6 @@
         <!-- JOB AVAILABILITY -->
         <div class="section section-avail">
             <h3 style="color:#c05621;">🚧 Job Availability Manager</h3>
-            <p style="color:#718096; font-size:14px;">Switch a job off and add a reason (max 50 words). Customers will see it as unavailable.</p>
             <div id="availList" style="margin-top:12px;"></div>
             <button class="btn btn-accent" onclick="saveAvailability()" style="margin-top:12px;">💾 Save Availability Changes</button>
             <p id="availMsg" style="margin-top:10px;"></p>
@@ -108,18 +124,26 @@
         <!-- NEWS / UPDATES -->
         <div class="section section-news">
             <h3 style="color:#276749;">📢 Post News / Update</h3>
-            <p style="color:#718096; font-size:14px;">Upload a design/image (max 15MB) + a description (max 100 words). It appears on every customer's dashboard.</p>
             <div style="margin-top:12px;">
-                <label style="font-size:13px; font-weight:600;">Update / News Image or Design</label>
-                <input type="file" id="newsFile" class="input-field" style="margin-top:5px;">
-                <label style="font-size:13px; font-weight:600; display:block; margin-top:10px;">Description (max 100 words)</label>
-                <textarea id="newsDesc" rows="3" class="input-field" style="margin-top:5px;" placeholder="Type your update here..."></textarea>
-                <p id="newsWordCount" style="font-size:12px; color:#a0aec0; margin-top:3px;">0 / 100 words</p>
-                <button class="btn btn-accent" onclick="postNews()" style="margin-top:10px;">🚀 Post to Dashboard</button>
+                <input type="file" id="newsFile" class="input-field">
+                <textarea id="newsDesc" rows="2" class="input-field" style="margin-top:8px;" placeholder="Description (max 100 words)"></textarea>
+                <button class="btn btn-accent" onclick="postNews()" style="margin-top:8px;">🚀 Post to Dashboard</button>
                 <p id="newsMsg" style="margin-top:10px;"></p>
-                <h4 style="margin-top:20px; color:#276749;">📋 Posted Updates (tap to delete)</h4>
-                <div id="postedUpdates" style="margin-top:10px;"><p style="color:#999;">Loading...</p></div>
             </div>
+            <h4 style="margin-top:20px; color:#276749;">📋 Posted Updates</h4>
+            <div id="postedUpdates" style="margin-top:10px;"><p style="color:#999;">Loading...</p></div>
+        </div>
+
+        <!-- TICKETS -->
+        <div class="section section-tickets">
+            <h3 style="color:#c53030;">💬 Support Tickets</h3>
+            <div id="ticketList" style="margin-top:10px;"><p style="color:#999;">Load orders to see tickets.</p></div>
+        </div>
+
+        <!-- REVIEWS -->
+        <div class="section section-reviews">
+            <h3 style="color:#975a16;">⭐ Customer Reviews</h3>
+            <div id="reviewList" style="margin-top:10px;"><p style="color:#999;">Load orders to see reviews.</p></div>
         </div>
 
     </div>
@@ -128,6 +152,9 @@
         const BACKEND_URL = window.location.origin;
         let refreshTimer = null;
         let savedToken = '';
+        let allTxns = [];
+        let allTickets = [];
+        let allReviews = [];
 
         const AVAIL_JOBS = [
             { key: "sticker", name: "Sticker (Large Format)" },
@@ -144,90 +171,181 @@
             { key: "envelope_card", name: "Design of Envelope & Cards" },
         ];
 
+        const ORDER_STATUSES = ["Awaiting Production", "In Production", "Ready for Pickup", "Completed"];
+
         function esc(s) {
             return String(s == null ? '' : s)
                 .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
                 .replace(/"/g, '&quot;');
         }
 
-        // ----- ORDERS -----
+        // ----- DATA LOADING -----
+        async function savePaymentMethods() {
+            const msg = document.getElementById('payMethodMsg');
+            msg.innerText = 'Saving...';
+            try {
+                const res = await fetch(`${BACKEND_URL}/api/admin/payment-methods?token=${encodeURIComponent(savedToken)}`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        paystack: document.getElementById('paystackEnabled').checked,
+                        cash: document.getElementById('cashEnabled').checked,
+                    }),
+                });
+                const data = await res.json();
+                if (res.ok) { msg.style.color = '#2f855a'; msg.innerText = '✅ ' + data.message; }
+                else { msg.style.color = '#c53030'; msg.innerText = data.message; }
+            } catch (e) { msg.style.color = '#c53030'; msg.innerText = 'Cannot reach server.'; }
+        }
+
         async function loadAdminData() {
             const tokenInput = document.getElementById('adminToken');
             const token = (tokenInput && tokenInput.value.trim()) || savedToken;
-            if (!token) {
-                document.getElementById('adminMsg').innerText = 'Enter your admin token.';
-                return;
-            }
+            if (!token) { document.getElementById('adminMsg').innerText = 'Enter your admin token.'; return; }
             savedToken = token;
             const msg = document.getElementById('adminMsg');
+            msg.className = 'message';
             msg.innerText = 'Loading...';
             try {
-                const res = await fetch(`${BACKEND_URL}/api/admin/transactions?token=${encodeURIComponent(token)}`);
-                const data = await res.json();
-                if (!res.ok) {
-                    msg.className = 'message error';
-                    msg.innerText = data.message || 'Unauthorized.';
-                    return;
-                }
-                msg.className = 'message';
+                const [txnsRes, ticketsRes, reviewsRes, statsRes] = await Promise.all([
+                    fetch(`${BACKEND_URL}/api/admin/transactions?token=${encodeURIComponent(token)}`),
+                    fetch(`${BACKEND_URL}/api/admin/tickets?token=${encodeURIComponent(token)}`),
+                    fetch(`${BACKEND_URL}/api/reviews`),
+                    fetch(`${BACKEND_URL}/api/admin/stats?token=${encodeURIComponent(token)}`),
+                ]);
+                const data = await txnsRes.json();
+                if (!txnsRes.ok) { msg.className = 'message error'; msg.innerText = data.message || 'Unauthorized.'; return; }
+                allTxns = data.transactions || [];
+                allTickets = (await ticketsRes.json()) || [];
+                allReviews = (await reviewsRes.json()) || [];
+                const stats = await statsRes.json();
                 msg.innerText = `Last updated: ${new Date().toLocaleTimeString()}`;
-                renderTables(data);
-                document.getElementById('autoRefresh').style.display = 'block';
+                renderStats(stats);
+                renderOrders();
+                renderCards(data.vip_cards || []);
+                renderTickets();
+                renderReviews();
+                loadPostedUpdates();
+                loadAvailability();
                 clearInterval(refreshTimer);
-                refreshTimer = setInterval(loadAdminData, 15000);
+                refreshTimer = setInterval(loadAdminData, 20000);
             } catch (e) {
                 msg.className = 'message error';
                 msg.innerText = 'Cannot reach server.';
             }
         }
 
-        function stopRefresh() {
-            clearInterval(refreshTimer);
-            document.getElementById('autoRefresh').style.display = 'none';
+        function stopRefresh() { clearInterval(refreshTimer); }
+
+        // ----- STATS -----
+        function renderStats(s) {
+            const cards = [
+                { num: s.customers, lbl: "Total Customers", cls: "" },
+                { num: "₦" + Number(s.total_revenue || 0).toLocaleString(), lbl: "Total Revenue", cls: "green" },
+                { num: s.total_orders, lbl: "Total Orders", cls: "blue" },
+                { num: "₦" + Number(s.revenue_today || 0).toLocaleString(), lbl: "Revenue Today", cls: "green" },
+                { num: s.orders_today, lbl: "Orders Today", cls: "blue" },
+                { num: s.pending_cash, lbl: "Pending Cash", cls: "orange" },
+                { num: s.vip_cards, lbl: "VIP Cards", cls: "" },
+                { num: s.open_tickets, lbl: "Open Tickets", cls: "red" },
+            ];
+            document.getElementById('statsGrid').innerHTML = cards.map(c =>
+                `<div class="stat-card ${c.cls}"><div class="num">${c.num}</div><div class="lbl">${c.lbl}</div></div>`
+            ).join('');
         }
 
-        function renderTables(data) {
-            const txns = data.transactions || [];
-            if (txns.length) {
-                let out = `<table>
-                    <tr><th>#</th><th>User</th><th>Order</th><th>Total</th><th>Status</th><th>File</th><th>Time</th></tr>`;
-                txns.forEach(t => {
-                    const isCashPending = String(t.status || '').includes('Cash Payment Pending');
-                    out += `<tr>
-                        <td><strong>${String(t.id).padStart(4, '0')}</strong></td>
-                        <td>${esc(t.username)}</td>
-                        <td>${esc(t.job_type)}</td>
-                        <td>₦${Number(t.total_price || 0).toLocaleString()}</td>
-                        <td style="color:${isCashPending ? '#c05621' : String(t.status || '').includes('Confirmed') ? 'green' : '#dd6b20'};">
-                            ${isCashPending ? `<button class="btn btn-small" style="background:#2f855a;color:white;" onclick="confirmCash(${t.id})">Confirm Cash</button>` : esc(t.status)}
-                        </td>
-                        <td>${t.file_id ? `<a href="${BACKEND_URL}/api/job-file/${t.file_id}?token=${encodeURIComponent(savedToken)}" target="_blank">Download</a>` : '-'}</td>
-                        <td>${esc(t.timestamp)}</td>
-                    </tr>`;
-                });
-                out += '</table>';
-                document.getElementById('txnTable').innerHTML = out;
-            } else {
-                document.getElementById('txnTable').innerHTML = '<p>No orders yet.</p>';
-            }
+        // ----- ORDERS -----
+        function renderOrders() {
+            const search = (document.getElementById('orderSearch').value || '').toLowerCase();
+            const filter = document.getElementById('orderFilter').value || '';
+            let txns = allTxns.filter(t => {
+                if (search && !t.username.toLowerCase().includes(search) && !t.job_type.toLowerCase().includes(search)) return false;
+                if (filter && !(t.production_status || '').includes(filter) && !(filter === 'Cash Payment Pending' && String(t.status).includes('Cash Payment Pending'))) return false;
+                return true;
+            });
+            if (!txns.length) { document.getElementById('txnTable').innerHTML = '<p>No orders match.</p>'; return; }
+            let out = `<table><tr><th>#</th><th>User</th><th>Order</th><th>Total</th><th>Payment</th><th>Order Status</th><th>Actions</th></tr>`;
+            txns.forEach(t => {
+                const ps = t.production_status || 'Awaiting Production';
+                const psColor = ps.includes('Completed') ? 'green' : ps.includes('Cancelled') ? '#c53030' : ps.includes('Ready') ? '#2b6cb0' : '#dd6b20';
+                const payPending = String(t.status).includes('Cash Payment Pending');
+                out += `<tr>
+                    <td><strong>#${String(t.id).padStart(4, '0')}</strong></td>
+                    <td>${esc(t.username)}</td>
+                    <td>${esc(t.job_type)}</td>
+                    <td>₦${Number(t.total_price || 0).toLocaleString()}</td>
+                    <td style="color:${payPending ? '#c05621' : 'green'};">${payPending ? 'Cash Pending' : 'Paid'}</td>
+                    <td style="color:${psColor}; font-weight:bold;">${ps}</td>
+                    <td style="white-space:normal; min-width:280px;">
+                        <select class="input-field" onchange="updateOrderStatus(${t.id}, this.value)">
+                            ${ORDER_STATUSES.map(s => `<option ${s === ps ? 'selected' : ''}>${s}</option>`).join('')}
+                        </select>
+                        <button class="btn btn-small" style="background:#2b6cb0; color:white; margin-top:4px;" onclick="uploadOrderPhoto(${t.id})">📸 Photo</button>
+                        <button class="btn btn-small" style="background:#c53030; color:white; margin-top:4px;" onclick="cancelOrder(${t.id})">Cancel</button>
+                        ${t.file_id ? `<a href="${BACKEND_URL}/api/job-file/${t.file_id}?token=${encodeURIComponent(savedToken)}" target="_blank" style="font-size:12px; margin-left:5px;">File</a>` : ''}
+                    </td>
+                </tr>`;
+            });
+            out += '</table>';
+            document.getElementById('txnTable').innerHTML = out;
+        }
 
-            const cards = data.vip_cards || [];
+        async function updateOrderStatus(id, status) {
+            const res = await fetch(`${BACKEND_URL}/api/admin/order-status?token=${encodeURIComponent(savedToken)}`, {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ id, production_status: status }),
+            });
+            const data = await res.json();
+            alert(data.message);
+            loadAdminData();
+        }
+
+        async function cancelOrder(id) {
+            const reason = prompt("Reason for cancellation (max 50 words):");
+            if (!reason) return;
+            if (!confirm("Cancel this order?")) return;
+            const res = await fetch(`${BACKEND_URL}/api/admin/cancel-order?token=${encodeURIComponent(savedToken)}`, {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ id, reason }),
+            });
+            const data = await res.json();
+            alert(data.message);
+            loadAdminData();
+        }
+
+        async function uploadOrderPhoto(id) {
+            const input = document.createElement('input');
+            input.type = 'file';
+            input.accept = 'image/*';
+            input.onchange = async () => {
+                if (!input.files[0]) return;
+                const formData = new FormData();
+                formData.append('file', input.files[0]);
+                formData.append('txn_id', id);
+                const res = await fetch(`${BACKEND_URL}/api/admin/order-photo?token=${encodeURIComponent(savedToken)}`, { method: 'POST', body: formData });
+                const data = await res.json();
+                alert(data.message);
+            };
+            input.click();
+        }
+
+        function exportCSV() {
+            window.open(`${BACKEND_URL}/api/admin/export-csv?token=${encodeURIComponent(savedToken)}`, '_blank');
+        }
+
+        // ----- VIP CARDS -----
+        function renderCards(cards) {
             if (cards.length) {
-                let out = `<table>
-                    <tr><th>Card</th><th>User</th><th>Name</th><th>Phone</th><th>Tier</th><th>Issued</th><th>QR</th></tr>`;
+                let out = `<table><tr><th>Card</th><th>User</th><th>Name</th><th>Phone</th><th>Tier</th><th>Issued</th><th>QR</th></tr>`;
                 cards.forEach(c => {
                     out += `<tr>
                         <td><strong>#${String(c.card_id).padStart(3, '0')}</strong></td>
-                        <td>${esc(c.username)}</td>
-                        <td>${esc(c.name)}</td>
-                        <td>${esc(c.phone)}</td>
-                        <td>${esc(c.tier)}</td>
-                        <td>${esc(c.issue_date)}</td>
+                        <td>${esc(c.username)}</td><td>${esc(c.name)}</td><td>${esc(c.phone)}</td>
+                        <td>${esc(c.tier)}</td><td>${esc(c.issue_date)}</td>
                         <td><a href="${BACKEND_URL}/api/vip-card-qr/${c.card_id}?token=${encodeURIComponent(savedToken)}" target="_blank">View QR</a></td>
                     </tr>`;
                 });
-                out += '</table>';
-                document.getElementById('cardTable').innerHTML = out;
+                document.getElementById('cardTable').innerHTML = out + '</table>';
             } else {
                 document.getElementById('cardTable').innerHTML = '<p>No VIP cards issued yet.</p>';
             }
@@ -235,16 +353,12 @@
 
         // ----- AVAILABILITY -----
         function renderAvailList() {
-            const list = document.getElementById('availList');
-            list.innerHTML = AVAIL_JOBS.map(j => `
+            document.getElementById('availList').innerHTML = AVAIL_JOBS.map(j => `
                 <div class="avail-row">
                     <span class="job-name">${j.name}</span>
-                    <label style="font-size:13px; font-weight:600;">
-                        <input type="checkbox" id="avail-${j.key}" checked> Available
-                    </label>
+                    <label style="font-size:13px; font-weight:600;"><input type="checkbox" id="avail-${j.key}" checked> Available</label>
                     <input type="text" id="reason-${j.key}" placeholder="Reason if unavailable (max 50 words)">
-                </div>
-            `).join('');
+                </div>`).join('');
         }
 
         async function loadAvailability() {
@@ -253,11 +367,9 @@
                 const data = await res.json();
                 AVAIL_JOBS.forEach(j => {
                     const entry = data[j.key];
-                    const checkbox = document.getElementById(`avail-${j.key}`);
-                    const reasonInput = document.getElementById(`reason-${j.key}`);
                     if (entry) {
-                        checkbox.checked = entry.available !== false;
-                        reasonInput.value = entry.reason || '';
+                        document.getElementById(`avail-${j.key}`).checked = entry.available !== false;
+                        document.getElementById(`reason-${j.key}`).value = entry.reason || '';
                     }
                 });
             } catch (e) { /* ignore */ }
@@ -265,7 +377,6 @@
 
         async function saveAvailability() {
             const msg = document.getElementById('availMsg');
-            msg.className = '';
             msg.innerText = 'Saving...';
             let saved = 0;
             for (const j of AVAIL_JOBS) {
@@ -273,73 +384,45 @@
                 const reason = document.getElementById(`reason-${j.key}`).value.trim();
                 try {
                     const res = await fetch(`${BACKEND_URL}/api/admin/availability?token=${encodeURIComponent(savedToken)}`, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
+                        method: 'POST', headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({ job_key: j.key, available, reason }),
                     });
                     if (res.ok) saved++;
                 } catch (e) { /* continue */ }
             }
-            msg.className = 'msg-ok';
+            msg.style.color = '#2f855a';
             msg.innerText = `✅ Availability saved (${saved}/${AVAIL_JOBS.length}).`;
         }
 
         // ----- NEWS -----
-        document.addEventListener('DOMContentLoaded', () => {
-            const desc = document.getElementById('newsDesc');
-            desc.addEventListener('input', () => {
-                document.getElementById('newsWordCount').innerText = `${desc.value.trim().split(/\s+/).filter(Boolean).length} / 100 words`;
-            });
-        });
-
         async function postNews() {
             const msg = document.getElementById('newsMsg');
             const fileInput = document.getElementById('newsFile');
             const desc = document.getElementById('newsDesc').value.trim();
-            msg.className = '';
-            if (!fileInput.files[0]) { msg.className = 'msg-err'; msg.innerText = 'Select an image/design file.'; return; }
-            if (!desc) { msg.className = 'msg-err'; msg.innerText = 'Description is required.'; return; }
-            if (desc.split(/\s+/).filter(Boolean).length > 100) { msg.className = 'msg-err'; msg.innerText = 'Description must be 100 words or less.'; return; }
+            msg.style.color = '';
+            if (!fileInput.files[0]) { msg.style.color = '#c53030'; msg.innerText = 'Select an image/design file.'; return; }
+            if (!desc) { msg.style.color = '#c53030'; msg.innerText = 'Description is required.'; return; }
             const formData = new FormData();
             formData.append('file', fileInput.files[0]);
             formData.append('description', desc);
             msg.innerText = 'Posting...';
             try {
-                const res = await fetch(`${BACKEND_URL}/api/admin/announcements?token=${encodeURIComponent(savedToken)}`, {
-                    method: 'POST', body: formData,
-                });
+                const res = await fetch(`${BACKEND_URL}/api/admin/announcements?token=${encodeURIComponent(savedToken)}`, { method: 'POST', body: formData });
                 const data = await res.json();
                 if (res.ok) {
-                    msg.className = 'msg-ok';
-                    msg.innerText = data.message;
-                    fileInput.value = '';
-                    document.getElementById('newsDesc').value = '';
-                    document.getElementById('newsWordCount').innerText = '0 / 100 words';
+                    msg.style.color = '#2f855a'; msg.innerText = data.message;
+                    fileInput.value = ''; document.getElementById('newsDesc').value = '';
                     loadPostedUpdates();
-                } else {
-                    msg.className = 'msg-err';
-                    msg.innerText = data.message || 'Failed to post.';
-                }
-            } catch (e) {
-                msg.className = 'msg-err';
-                msg.innerText = 'Cannot reach server.';
-            }
+                } else { msg.style.color = '#c53030'; msg.innerText = data.message || 'Failed to post.'; }
+            } catch (e) { msg.style.color = '#c53030'; msg.innerText = 'Cannot reach server.'; }
         }
-
-        // ----- INIT -----
-        renderAvailList();
-        loadAvailability();
-        loadPostedUpdates();
 
         async function loadPostedUpdates() {
             try {
                 const res = await fetch(`${BACKEND_URL}/api/announcements`);
                 const items = await res.json();
                 const wrap = document.getElementById('postedUpdates');
-                if (!items.length) {
-                    wrap.innerHTML = '<p style="color:#999;">No updates posted yet.</p>';
-                    return;
-                }
+                if (!items.length) { wrap.innerHTML = '<p style="color:#999;">No updates posted yet.</p>'; return; }
                 wrap.innerHTML = items.map(a => `
                     <div style="display:flex; align-items:center; gap:10px; background:#fff; border:1px solid #e2e8f0; border-radius:8px; padding:10px; margin-bottom:8px; flex-wrap:wrap;">
                         <img src="${BACKEND_URL}/api/announcement-image/${a.file_id}" style="width:60px; height:60px; object-fit:cover; border-radius:6px;">
@@ -348,8 +431,7 @@
                             <div style="font-size:11px; color:#a0aec0;">${esc(a.created_at)}</div>
                         </div>
                         <button class="btn btn-small" style="background:#c53030; color:white;" onclick="deleteUpdate(${a.id})">🗑 Delete</button>
-                    </div>
-                `).join('');
+                    </div>`).join('');
             } catch (e) {
                 document.getElementById('postedUpdates').innerHTML = '<p style="color:#999;">No updates posted yet.</p>';
             }
@@ -357,36 +439,67 @@
 
         async function deleteUpdate(id) {
             if (!confirm('Delete this update?')) return;
-            try {
-                const res = await fetch(`${BACKEND_URL}/api/admin/announcements/${id}?token=${encodeURIComponent(savedToken)}`, {
-                    method: 'DELETE',
-                });
-                const data = await res.json();
-                if (res.ok) {
-                    alert(data.message);
-                    loadPostedUpdates();
-                } else {
-                    alert(data.message || 'Delete failed.');
-                }
-            } catch (e) {
-                alert('Cannot reach server.');
-            }
+            const res = await fetch(`${BACKEND_URL}/api/admin/announcements/${id}?token=${encodeURIComponent(savedToken)}`, { method: 'DELETE' });
+            const data = await res.json();
+            alert(data.message);
+            loadPostedUpdates();
         }
 
-        async function confirmCash(id) {
-            if (!confirm('Confirm that cash payment was received?')) return;
+        // ----- TICKETS -----
+        function renderTickets() {
+            const wrap = document.getElementById('ticketList');
+            if (!allTickets.length) { wrap.innerHTML = '<p style="color:#999;">No support tickets yet.</p>'; return; }
+            wrap.innerHTML = allTickets.map(t => `
+                <div class="ticket-row">
+                    <p style="font-size:13px;"><strong>${esc(t.username)}</strong> <span style="color:#a0aec0; font-size:11px;">${esc(t.created_at)}</span></p>
+                    <p style="font-size:13px; color:#2d3748;">${esc(t.message)}</p>
+                    ${t.reply
+                        ? `<p style="font-size:13px; color:#276749; margin-top:6px;"><strong>Reply:</strong> ${esc(t.reply)} <span style="color:#a0aec0; font-size:11px;">${esc(t.replied_at || '')}</span></p>`
+                        : `<div style="margin-top:8px; display:flex; gap:6px;">
+                            <input type="text" id="reply-${t.id}" placeholder="Type reply..." class="input-field" style="flex:1; padding:6px 10px; font-size:13px;">
+                            <button class="btn btn-small btn-green" onclick="replyTicket(${t.id})">Reply</button>
+                        </div>`}
+                </div>`).join('');
+        }
+
+        async function replyTicket(id) {
+            const input = document.getElementById(`reply-${id}`);
+            const reply = input.value.trim();
+            if (!reply) { alert('Type a reply first.'); return; }
+            const res = await fetch(`${BACKEND_URL}/api/admin/ticket-reply?token=${encodeURIComponent(savedToken)}`, {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ id, reply }),
+            });
+            const data = await res.json();
+            alert(data.message);
+            loadAdminData();
+        }
+
+        // ----- REVIEWS -----
+        function renderReviews() {
+            const wrap = document.getElementById('reviewList');
+            if (!allReviews.length) { wrap.innerHTML = '<p style="color:#999;">No reviews yet.</p>'; return; }
+            wrap.innerHTML = allReviews.map(r => `
+                <div style="background:#fff; border:1px solid #e2e8f0; border-radius:8px; padding:12px; margin-bottom:8px;">
+                    <span class="stars">${'★'.repeat(r.rating)}${'☆'.repeat(5 - r.rating)}</span>
+                    <strong style="margin-left:8px;">${esc(r.username)}</strong>
+                    <p style="font-size:13px; color:#2d3748; margin-top:5px;">${esc(r.comment)}</p>
+                    <p style="font-size:11px; color:#a0aec0; margin-top:3px;">${esc(r.created_at)}</p>
+                </div>`).join('');
+        }
+
+        // ----- INIT -----
+        renderAvailList();
+        loadAvailability();
+        loadPaymentMethods();
+
+        async function loadPaymentMethods() {
             try {
-                const res = await fetch(`${BACKEND_URL}/api/admin/confirm-cash?token=${encodeURIComponent(savedToken)}`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ id }),
-                });
+                const res = await fetch(`${BACKEND_URL}/api/payment-methods`);
                 const data = await res.json();
-                alert(data.message);
-                if (res.ok) loadAdminData();
-            } catch (e) {
-                alert('Cannot reach server.');
-            }
+                document.getElementById('paystackEnabled').checked = data.paystack !== false;
+                document.getElementById('cashEnabled').checked = data.cash !== false;
+            } catch (e) { /* ignore */ }
         }
     </script>
 </body>

@@ -18,10 +18,17 @@
 
     <div class="container">
         <h1 style="margin-bottom: 20px; font-size: 24px; color: #1a202c;">Premium Printing Services</h1>
+        <div style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:20px;">
+            <button class="btn" style="background:#553c9a; color:white; padding:8px 18px;" data-filter="all">All Services</button>
+            <button class="btn" style="background:#e9d8fd; color:#553c9a; padding:8px 18px;" data-filter="large">Large Format</button>
+            <button class="btn" style="background:#e9d8fd; color:#553c9a; padding:8px 18px;" data-filter="di">Digital Image</button>
+            <button class="btn" style="background:#e9d8fd; color:#553c9a; padding:8px 18px;" data-filter="sublimation">Sublimation</button>
+            <button class="btn" style="background:#e9d8fd; color:#553c9a; padding:8px 18px;" data-filter="pvc">P.V.C</button>
+        </div>
         <div class="jobs-grid">
             
             <!-- STICKERS & LABELS PRODUCTION CARD (SECTION 6) -->
-            <div class="job-card" id="stickCard" data-avail-key="sticker">
+            <div class="job-card" id="stickCard" data-avail-key="sticker" data-category="large">
                 <h3>Stickers & Labels Production</h3>
                 <p style="font-size:13px; color:var(--text-muted); margin-bottom:10px;">Premium area calculation computed at ₦250 per square foot.</p>
                 <div class="row-inputs">
@@ -48,7 +55,7 @@
             </div>
 
             <!-- BANNERS & FLEX PRODUCTION CARD -->
-            <div class="job-card" id="flexCard" data-avail-key="banner_flex">
+            <div class="job-card" id="flexCard" data-avail-key="banner_flex" data-category="large">
                 <h3>Banner & Flex Printing</h3>
                 <div class="row-inputs">
                     <div>
@@ -75,7 +82,7 @@
             </div>
 
             <!-- MUG CUP PRODUCTION CARD -->
-            <div class="job-card" id="mugCard" data-avail-key="mug">
+            <div class="job-card" id="mugCard" data-avail-key="mug" data-category="large">
                 <h3>Mug Cup Production</h3>
                 <label style="font-size:14px; display:block; font-weight:600;">Select Mug Type</label>
                 <select id="mugType" class="input-field">
@@ -98,7 +105,7 @@
             </div>
 
             <!-- FIXED PRICE JOBS CARD -->
-            <div class="job-card" id="fixedCard">
+            <div class="job-card" id="fixedCard" data-category="pvc">
                 <h3>Fixed Price Printouts</h3>
                 <label style="font-size:14px; display:block; font-weight:600;">Select Document Type</label>
                 <select id="fixedType" class="input-field">
@@ -119,7 +126,7 @@
             </div>
 
             <!-- TYPING & PRINTING SERVICES CARD -->
-            <div class="job-card" id="typingCard" data-avail-key="typing">
+            <div class="job-card" id="typingCard" data-avail-key="typing" data-category="di">
                 <h3>Typing & Printing Services</h3>
                 <label style="font-size:14px; display:block; font-weight:600;">Select Task Configuration</label>
                 <select id="typingType" class="input-field">
@@ -156,7 +163,7 @@
             </div>
 
             <!-- ENVELOPE & CARD DESIGN CARD -->
-            <div class="job-card" id="designCard" data-avail-key="envelope_card">
+            <div class="job-card" id="designCard" data-avail-key="envelope_card" data-category="di">
                 <h3>Design of Envelope &amp; Cards</h3>
                 <label style="font-size:14px; display:block; font-weight:600;">Select Item</label>
                 <select id="designItem" class="input-field" onchange="updateDesignSizes()">
@@ -441,6 +448,23 @@
                 }
             });
         }
+
+        // ----- JOB CATEGORY TABS -----
+        document.querySelectorAll('[data-filter]').forEach(tab => {
+            tab.addEventListener('click', () => {
+                document.querySelectorAll('[data-filter]').forEach(t => {
+                    t.style.background = '#e9d8fd'; t.style.color = '#553c9a';
+                });
+                tab.style.background = '#553c9a'; tab.style.color = 'white';
+                const filter = tab.dataset.filter;
+                document.querySelectorAll('.job-card[data-category]').forEach(card => {
+                    const show = (filter === 'all' || card.dataset.category === filter);
+                    if (!card.dataset.availKey || !AVAIL[card.dataset.availKey] || AVAIL[card.dataset.availKey].available !== false) {
+                        card.style.display = show ? '' : 'none';
+                    }
+                });
+            });
+        });
 
         // Init
         updateDesignSizes();
