@@ -59,11 +59,13 @@
 
         <!-- TOKEN GATE -->
         <div class="section" style="background:#fff; border:1px solid #e2e8f0;">
-            <h3 style="color:#553c9a; margin-top:0;">�? Admin Access</h3>
+            <h3 style="color:#553c9a; margin-top:0;">&#128274; Admin Access</h3>
             <div style="display:flex; gap:10px; flex-wrap:wrap;">
                 <input type="password" id="adminToken" placeholder="Enter your admin token" class="input-field" style="flex:1; min-width:220px;">
                 <button class="btn btn-brand" onclick="loadAdminData()">Load Orders</button>
+                <button class="btn btn-accent" onclick="enableNotifications()" id="notifBtn">&#128276; Enable Alerts</button>
             </div>
+            <p id="notifStatus" style="font-size:12px; color:#718096; margin-top:6px;">Alerts are OFF &mdash; click &quot;Enable Alerts&quot; to get notified about new orders, messages and reviews.</p>
             <p id="adminMsg" class="message" style="margin-top:10px;"></p>
         </div>
 
@@ -179,6 +181,99 @@
                 .replace(/"/g, '&quot;');
         }
 
+        // ----- LIVE ALERTS: sound + toast + browser notification -----
+        let alertsEnabled = false;
+        let lastCounts = { orders: null, tickets: null, reviews: null, cards: null };
+        let lastCardCount = 0;
+
+        function playAlertSound() {
+            try {
+                const ctx = new (window.AudioContext || window.webkitAudioContext)();
+                const notes = [880, 1174, 1568];
+                notes.forEach((freq, i) => {
+                    const osc = ctx.createOscillator();
+                    const gain = ctx.createGain();
+                    osc.connect(gain);
+                    gain.connect(ctx.destination);
+                    osc.frequency.value = freq;
+                    osc.type = 'sine';
+                    const start = ctx.currentTime + i * 0.16;
+                    gain.gain.setValueAtTime(0.12, start);
+                    gain.gain.exponentialRampToValueAtTime(0.0001, start + 0.15);
+                    osc.start(start);
+                    osc.stop(start + 0.16);
+                });
+            } catch (e) { /* audio not available */ }
+        }
+
+        function showToast(title, body) {
+            let wrap = document.getElementById('toastWrap');
+            if (!wrap) {
+                wrap = document.createElement('div');
+                wrap.id = 'toastWrap';
+                wrap.style.cssText = 'position:fixed;top:18px;right:18px;z-index:9999;display:flex;flex-direction:column;gap:10px;max-width:330px;';
+                document.body.appendChild(wrap);
+            }
+            const toast = document.createElement('div');
+            toast.style.cssText = 'background:linear-gradient(135deg,#553c9a,#6b46c1);color:#fff;padding:14px 18px;border-radius:10px;box-shadow:0 4px 14px rgba(0,0,0,0.22);font-size:14px;';
+            toast.innerHTML = '<strong>' + title + '</strong><br><span style="font-size:13px;opacity:0.9;">' + body + '</span>';
+            wrap.appendChild(toast);
+            setTimeout(() => { if (toast.parentNode) toast.parentNode.removeChild(toast); }, 9000);
+        }
+
+        function notifyAdmin(title, body) {
+            playAlertSound();
+            showToast(title, body);
+            if (alertsEnabled && typeof Notification !== 'undefined' && Notification.permission === 'granted') {
+                try {
+                    const n = new Notification(title, { body: body, tag: 'foda-alert-' + Date.now() });
+                    n.onclick = function () { window.focus(); n.close(); };
+                } catch (e) { /* some browsers need a service worker */ }
+            }
+        }
+
+        function enableNotifications() {
+            alertsEnabled = true;
+            playAlertSound();
+            const status = document.getElementById('notifStatus');
+            if (typeof Notification !== 'undefined') {
+                Notification.requestPermission().then(perm => {
+                    if (perm === 'granted') {
+                        status.innerHTML = '<strong style="color:#2f855a;">Alerts ON</strong> &mdash; you will be notified about new orders, cash payments, messages and reviews even in a background tab.';
+                    } else {
+                        status.innerHTML = 'Sound + on-page alerts are ON. Browser popups were blocked &mdash; allow notifications in your browser address bar.';
+                    }
+                });
+            } else {
+                status.innerHTML = '<strong style="color:#2f855a;">Alerts ON</strong> &mdash; sound and on-page alerts are active.';
+            }
+        }
+
+        function checkForNewActivity() {
+            const counts = {
+                orders: allTxns.length,
+                tickets: allTickets.filter(t => t.status === 'Open').length,
+                reviews: allReviews.length,
+                cards: lastCardCount,
+            };
+            if (lastCounts.orders !== null && alertsEnabled) {
+                const newOrders = counts.orders - lastCounts.orders;
+                const newTickets = counts.tickets - lastCounts.tickets;
+                const newReviews = counts.reviews - lastCounts.reviews;
+                const newCards = counts.cards - lastCounts.cards;
+                if (newOrders > 0) {
+                    const latest = allTxns[0];
+                    notifyAdmin('New Order Received!',
+                        (latest ? (esc(latest.username) + ' &mdash; ' + esc(latest.job_type) + ' (&#8358;' + Number(latest.total_price || 0).toLocaleString() + ')') : '') +
+                        (newOrders > 1 ? ' (' + newOrders + ' new orders)' : ''));
+                }
+                if (newTickets > 0) notifyAdmin('New Support Message', 'A customer sent you a message. Open Support Tickets to reply.');
+                if (newReviews > 0) notifyAdmin('New Customer Review', 'A customer left a rating and comment.');
+                if (newCards > 0) notifyAdmin('New VIP Card Issued', newCards + ' VIP card(s) issued.');
+            }
+            lastCounts = counts;
+        }
+
         // ----- DATA LOADING -----
         async function savePaymentMethods() {
             const msg = document.getElementById('payMethodMsg');
@@ -227,8 +322,9 @@
                 renderReviews();
                 loadPostedUpdates();
                 loadAvailability();
+                checkForNewActivity();
                 clearInterval(refreshTimer);
-                refreshTimer = setInterval(loadAdminData, 20000);
+                refreshTimer = setInterval(loadAdminData, 15000);
             } catch (e) {
                 msg.className = 'message error';
                 msg.innerText = 'Cannot reach server.';
@@ -355,6 +451,7 @@
 
         // ----- VIP CARDS -----
         function renderCards(cards) {
+            lastCardCount = cards.length;
             if (cards.length) {
                 let out = `<table><tr><th>Card</th><th>User</th><th>Name</th><th>Phone</th><th>Tier</th><th>Issued</th><th>QR</th></tr>`;
                 cards.forEach(c => {
