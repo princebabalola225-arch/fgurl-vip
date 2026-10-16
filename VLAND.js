@@ -1,4 +1,4 @@
-const authForm = document.getElementById('authForm');
+﻿const authForm = document.getElementById('authForm');
 const formTitle = document.getElementById('formTitle');
 const submitBtn = document.getElementById('submitBtn');
 const toggleText = document.getElementById('toggleText');
@@ -14,11 +14,11 @@ toggleText.addEventListener('click', () => {
     messageEl.className = "message";
     messageEl.innerText = "";
     if (isLoginMode) {
-        formTitle.innerText = "FGURL VIP";
+        formTitle.innerText = "FodaKem VIP";
         submitBtn.innerText = "Sign In";
         toggleText.innerText = "Need a premium account? Register here";
     } else {
-        formTitle.innerText = "Create FGURL VIP Account";
+        formTitle.innerText = "Create FodaKem VIP Account";
         submitBtn.innerText = "Register VIP Profile";
         toggleText.innerText = "Already have an account? Sign In";
     }
@@ -59,7 +59,7 @@ authForm.addEventListener('submit', async (e) => {
         }
     } catch (error) {
         messageEl.className = "message error";
-        messageEl.innerText = "Error: Cannot establish network pipeline connection to FGURL VIP cloud server.";
+        messageEl.innerText = "Error: Cannot establish network pipeline connection to FodaKem VIP cloud server.";
         submitBtn.disabled = false;
         submitBtn.innerText = isLoginMode ? "Sign In to Portal" : "Register VIP Profile";
     }

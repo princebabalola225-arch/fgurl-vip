@@ -1,9 +1,9 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>FGURL VIP | Secure Settlement Gateway</title>
+    <title>FodaKem VIP | Secure Settlement Gateway</title>
     <!-- BUG FIX: stylesheet is VLAND.css -->
     <link rel="stylesheet" href="VLAND.css">
     <!-- BUG FIX: correct Paystack JS SDK (paystack.co is not a script) -->
@@ -12,7 +12,7 @@
 <body>
     <div class="container" style="max-width: 600px; margin-top:40px;">
         <div class="job-card">
-            <h2 style="color:#1a202c; margin-bottom:10px;">FGURL VIP Invoicing</h2>
+            <h2 style="color:#1a202c; margin-bottom:10px;">FodaKem VIP Invoicing</h2>
             <div style="background:#edf2f7; padding:18px; border-radius:10px; margin:15px 0; font-size:15px; border:1px solid #e2e8f0;">
                 <p style="margin-bottom:6px;">Service Requested: <strong id="outJob">...</strong></p>
                 <p style="margin-bottom:6px;">Corporate Base Cost: <strong id="outActual">...</strong></p>
@@ -41,9 +41,9 @@
         const totalPayable = actual + vipSurcharge;
 
         document.getElementById('outJob').innerText = job || '...';
-        document.getElementById('outActual').innerText = "₦" + actual.toLocaleString();
-        document.getElementById('outVip').innerText = "₦" + vipSurcharge.toLocaleString();
-        document.getElementById('outTotal').innerText = "₦" + totalPayable.toLocaleString();
+        document.getElementById('outActual').innerText = "â‚¦" + actual.toLocaleString();
+        document.getElementById('outVip').innerText = "â‚¦" + vipSurcharge.toLocaleString();
+        document.getElementById('outTotal').innerText = "â‚¦" + totalPayable.toLocaleString();
 
         let paystackPublicKey = '';
         let paystackSubaccount = '';
@@ -83,7 +83,7 @@
                 return;
             }
             const activeUser = localStorage.getItem('active_user') || 'guest';
-            const simulatedEmail = `${activeUser}@fgurlvip.com`;
+            const simulatedEmail = `${activeUser}@FodaKemvip.com`;
 
             const setupConfig = {
                 // LIVE public key is loaded from your server (no key hardcoded here)

@@ -1,9 +1,9 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Official Receipt | FGURL VIP</title>
+    <title>Official Receipt | FodaKem VIP</title>
     <link rel="stylesheet" href="VLAND.css">
     <style>
         .receipt { max-width: 600px; margin: 0 auto; }
@@ -21,13 +21,13 @@
     <div class="container" style="padding: 30px 15px;">
         <div class="receipt job-card" style="padding: 30px;">
             <div style="text-align:center; border-bottom: 2px dashed #cbd5e0; padding-bottom: 15px; margin-bottom: 15px;">
-                <h1 class="brand" style="margin:0;">FGURL VIP</h1>
+                <h1 class="brand" style="margin:0;">FodaKem VIP</h1>
                 <p style="color:#718096; margin:5px 0;">Official Order Receipt</p>
             </div>
             <div id="receiptBody"><p style="color:#999;">Loading receipt...</p></div>
             <div class="no-print" style="text-align:center; margin-top:25px;">
-                <button class="btn" style="background:#553c9a; color:white;" onclick="window.print()">🖨 Print Receipt</button>
-                <a href="dashboard.html" class="btn" style="background:#edf2f7; color:#4a5568; text-decoration:none; display:inline-block; margin-left:8px;">← Back to Dashboard</a>
+                <button class="btn" style="background:#553c9a; color:white;" onclick="window.print()">ðŸ–¨ Print Receipt</button>
+                <a href="dashboard.html" class="btn" style="background:#edf2f7; color:#4a5568; text-decoration:none; display:inline-block; margin-left:8px;">â† Back to Dashboard</a>
             </div>
         </div>
     </div>
@@ -50,9 +50,9 @@
                             <tr><td><strong>Receipt No</strong></td><td>#${String(t.id).padStart(4, '0')}</td></tr>
                             <tr><td><strong>Customer</strong></td><td>${t.username}</td></tr>
                             <tr><td><strong>Order</strong></td><td>${t.job_type}</td></tr>
-                            <tr><td><strong>Base Price</strong></td><td>₦${Number(t.actual_price).toLocaleString()}</td></tr>
-                            <tr><td><strong>VIP Charge</strong></td><td>₦${Number(t.vip_money).toLocaleString()}</td></tr>
-                            <tr class="total-row"><td><strong>Total</strong></td><td>₦${Number(t.total_price).toLocaleString()}</td></tr>
+                            <tr><td><strong>Base Price</strong></td><td>â‚¦${Number(t.actual_price).toLocaleString()}</td></tr>
+                            <tr><td><strong>VIP Charge</strong></td><td>â‚¦${Number(t.vip_money).toLocaleString()}</td></tr>
+                            <tr class="total-row"><td><strong>Total</strong></td><td>â‚¦${Number(t.total_price).toLocaleString()}</td></tr>
                             <tr><td><strong>Payment</strong></td><td>${t.status}</td></tr>
                             <tr><td><strong>Order Status</strong></td><td style="color:${statusColor}; font-weight:bold;">${t.production_status || 'Awaiting Production'}</td></tr>
                             <tr><td><strong>Date</strong></td><td>${t.timestamp}</td></tr>
