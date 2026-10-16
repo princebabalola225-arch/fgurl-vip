@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>VIP Workspace Shell | FodaKem VIP</title>
+    <title>Dashboard | FodaKem VIP</title>
     <link rel="stylesheet" href="VLAND.css">
 </head>
 <body>
@@ -25,12 +25,12 @@
         </div>
 
         <div id="homePanel">
-            <h1>Welcome Back</h1>
-            <p style="margin-top: 10px; color:#666;">Select "Jobs" from the navigation menu above to manage and calculate corporate rates.</p>
+            <h1 id="greeting">Welcome Back</h1>
+            <p style="margin-top: 10px; color:#666;" id="greetingSub"></p>
         </div>
 
         <div id="announcementsSection" style="margin-top:25px;">
-            <h2 style="font-size:20px; color:#1a202c; margin-bottom:15px;">📢 Latest News &amp; Updates</h2>
+            <h2 style="font-size:20px; color:#1a202c; margin-bottom:15px;">📢 News, Updates &amp; Reactions</h2>
             <div id="announcementsList"><p style="color:#999;">Loading updates...</p></div>
         </div>
 
@@ -38,6 +38,10 @@
             <h1>My Transaction Records</h1>
             <div class="table-container" style="margin-top:20px;">
                 <div id="historyLog">Loading historical account data...</div>
+            </div>
+            <div id="jobUpdatesSection" style="margin-top:25px;">
+                <h2 style="font-size:18px; color:#1a202c; margin-bottom:10px;">🗒️ Job Updates</h2>
+                <div id="jobUpdatesList"><p style="color:#999;">Loading job updates...</p></div>
             </div>
         </div>
 
@@ -53,24 +57,99 @@
     </div>
 
     <script>
-        // Auto-detects the server: works locally (127.0.0.1:5000) and on Render
         const BACKEND_URL = window.location.origin;
 
-        async function runSecurityIntegrityAudit() {
-            const user = localStorage.getItem('active_user');
-            if(!user) { window.location.href = 'VLAND.html'; return; }
-
-            const res = await fetch(`${BACKEND_URL}/api/check-expiry?user=${encodeURIComponent(user)}`);
-            const data = await res.json();
-            if(data.status === 'expired') {
-                window.location.href = 'renew.html';
-            } else if (data.has_card === true) {
-                localStorage.setItem('vip_reminder_active', 'false');
-            }
+        function esc(s) {
+            return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
         }
-        runSecurityIntegrityAudit();
-        loadAnnouncements();
 
+        let activeUser = localStorage.getItem('active_user') || 'guest';
+
+        // ----- PROFILE -----
+        async function loadProfile() {
+            try {
+                const res = await fetch(`${BACKEND_URL}/api/my-profile?user=${encodeURIComponent(activeUser)}`);
+                const data = await res.json();
+                if (res.ok) {
+                    document.getElementById('greeting').innerText = 'Hi, ' + (data.nickname || activeUser);
+                    document.getElementById('greetingSub').innerText =
+                        'Welcome back to FodaKem VIP' +
+                        (data.first_name ? ', ' + data.first_name : '') +
+                        (data.last_name ? ' ' + data.last_name : '') +
+                        (data.sex ? ' (' + data.sex + ')' : '');
+                }
+            } catch (e) { /* ignore */ }
+        }
+
+        // ----- NOTIFICATIONS -----
+        let notificationsTimer = null;
+
+        function playBeep() {
+            try {
+                if (!window._fgAudio) {
+                    window._fgAudio = new (window.AudioContext || window.webkitAudioContext)();
+                }
+                const ctx = window._fgAudio;
+                if (ctx.state === 'suspended') { ctx.resume(); }
+                const notes = [880, 1174, 1568];
+                notes.forEach((freq, i) => {
+                    const osc = ctx.createOscillator();
+                    const gain = ctx.createGain();
+                    osc.connect(gain);
+                    gain.connect(ctx.destination);
+                    osc.frequency.value = freq;
+                    osc.type = 'sine';
+                    const start = ctx.currentTime + i * 0.16;
+                    gain.gain.setValueAtTime(0.25, start);
+                    gain.gain.exponentialRampToValueAtTime(0.0001, start + 0.16);
+                    osc.start(start);
+                    osc.stop(start + 0.17);
+                });
+            } catch (e) { /* audio unavailable */ }
+        }
+
+        function showToast(title, body) {
+            let wrap = document.getElementById('toastWrap');
+            if (!wrap) {
+                wrap = document.createElement('div');
+                wrap.id = 'toastWrap';
+                wrap.style.cssText = 'position:fixed;top:12px;left:12px;right:12px;z-index:9999;display:flex;flex-direction:column;gap:10px;';
+                document.body.appendChild(wrap);
+            }
+            const toast = document.createElement('div');
+            toast.style.cssText = 'background:linear-gradient(135deg,#553c9a,#6b46c1);color:#fff;padding:16px;border-radius:12px;box-shadow:0 6px 18px rgba(0,0,0,0.3);font-size:15px;cursor:pointer;';
+            toast.innerHTML = '<strong>' + esc(title) + '</strong><br><span style="font-size:13px;opacity:0.92;display:block;">' + esc(body) + '</span>';
+            toast.addEventListener('click', () => { if (toast.parentNode) toast.parentNode.removeChild(toast); });
+            wrap.appendChild(toast);
+            setTimeout(() => { if (toast.parentNode) toast.parentNode.removeChild(toast); }, 10000);
+        }
+
+        async function loadNotifications() {
+            try {
+                const res = await fetch(`${BACKEND_URL}/api/my-notifications?user=${encodeURIComponent(activeUser)}`);
+                const items = await res.json();
+                const fresh = items.filter(n => !n.read);
+                if (fresh.length) {
+                    playBeep();
+                    showToast('New notification', fresh[0].title + ' — ' + fresh[0].body);
+                }
+                document.getElementById('toastWrap').innerHTML = '';
+                const list = document.getElementById('notificationList');
+                if (!list) { return; }
+            } catch (e) { /* ignore */ }
+        }
+
+        async function markNotificationsRead() {
+            try {
+                await fetch(`${BACKEND_URL}/api/mark-notifications-read`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ user: activeUser }),
+                });
+            } catch (e) { /* ignore */ }
+        }
+
+        // ----- NEWS & REACTIONS -----
         async function loadAnnouncements() {
             try {
                 const res = await fetch(`${BACKEND_URL}/api/announcements`);
@@ -80,112 +159,124 @@
                     list.innerHTML = '<p style="color:#999;">No news or updates yet.</p>';
                     return;
                 }
-                list.innerHTML = items.map(a => `
+                list.innerHTML = items.map(a => {
+                    const reactions = window.REACTIONS[a.id] || {};
+                    const counts = Object.keys(reactions).length;
+                    return `
                     <div class="job-card" style="margin-bottom:15px; padding:20px;">
                         <img src="${BACKEND_URL}/api/announcement-image/${a.file_id}" style="width:100%; max-height:300px; object-fit:contain; border-radius:8px; background:#f7fafc;">
-                        <p style="margin-top:12px; font-size:15px; color:#2d3748;">${a.description.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</p>
+                        <p style="margin-top:12px; font-size:15px; color:#2d3748;">${esc(a.description)}</p>
+                        <div style="display:flex; gap:10px; margin-top:10px; align-items:center; flex-wrap:wrap;">
+                            <button class="btn btn-small" style="background:#553c9a; color:white;" onclick="reactTo('${a.id}', '👍')">👍 ${reactions['👍'] || 0}</button>
+                            <button class="btn btn-small" style="background:#553c9a; color:white;" onclick="reactTo('${a.id}', '❤️')">❤️ ${reactions['❤️'] || 0}</button>
+                            <button class="btn btn-small" style="background:#553c9a; color:white;" onclick="reactTo('${a.id}', '👏')">👏 ${reactions['👏'] || 0}</button>
+                            <span style="font-size:12px; color:#a0aec0;">${counts} reaction(s)</span>
+                        </div>
                         <p style="margin-top:8px; font-size:12px; color:#a0aec0;">Posted: ${a.created_at}</p>
-                    </div>
-                `).join('');
+                    </div>`;
+                }).join('');
             } catch (e) {
                 document.getElementById('announcementsList').innerHTML = '<p style="color:#999;">No news or updates yet.</p>';
             }
         }
 
-        function runVipTimer() {
-            if (localStorage.getItem('vip_reminder_active') === 'true') {
-                const startTime = parseInt(localStorage.getItem('vip_timer_start'), 10);
-                const timerInterval = setInterval(() => {
-                    if (localStorage.getItem('vip_reminder_active') === 'false') {
-                        document.getElementById('vipBanner').style.display = 'none';
-                        clearInterval(timerInterval);
-                        return;
-                    }
-                    if ((Date.now() - startTime) >= 360000) { 
-                        document.getElementById('vipBanner').style.display = 'block';
-                        clearInterval(timerInterval);
-                    }
-                }, 5000);
-            }
-        }
-        runVipTimer();
-
-        document.getElementById('navHome').addEventListener('click', (e) => {
-            e.preventDefault();
-            document.getElementById('homePanel').style.display = 'block';
-            document.getElementById('transactPanel').style.display = 'none';
-            document.getElementById('supportPanel').style.display = 'none';
-        });
-
-        document.getElementById('navSupport').addEventListener('click', (e) => {
-            e.preventDefault();
-            document.getElementById('homePanel').style.display = 'none';
-            document.getElementById('transactPanel').style.display = 'none';
-            document.getElementById('supportPanel').style.display = 'block';
-            loadTickets();
-        });
-
-        document.getElementById('navTransact').addEventListener('click', async (e) => {
-            e.preventDefault();
-            document.getElementById('homePanel').style.display = 'none';
-            document.getElementById('transactPanel').style.display = 'block';
-            
-            const user = localStorage.getItem('active_user') || 'guest';
-            const response = await fetch(`${BACKEND_URL}/api/transactions?user=${encodeURIComponent(user)}`);
-            if (response.ok) {
-                const logs = await response.json();
-                let output = `<table>
-                    <tr style="background:#eee;"><th>Ref ID</th><th>Job Details</th><th>Total Price</th><th>Payment</th><th>Order Status</th><th></th></tr>`;
-                logs.forEach(log => {
-                    const ps = log.production_status || 'Awaiting Production';
-                    const psColor = ps.includes('Completed') ? 'green' : ps.includes('Cancelled') ? '#c53030' : ps.includes('Ready') ? '#2b6cb0' : '#dd6b20';
-                    const payColor = String(log.status).includes('Pending') ? '#c05621' : 'green';
-                    output += `<tr>
-                        <td><strong>#${String(log.id).padStart(4, '0')}</strong></td>
-                        <td>${log.job_type}</td>
-                        <td>₦${log.total_price.toLocaleString()}</td>
-                        <td style="color:${payColor};">${String(log.status).includes('Pending') ? 'Cash Pending' : 'Paid'}</td>
-                        <td style="color:${psColor}; font-weight:bold;">${ps}</td>
-                        <td style="white-space:nowrap;">
-                            <a href="receipt.html?id=${log.id}" target="_blank" style="color:#553c9a; font-size:12px;">Receipt</a>
-                            ${ps === 'Completed' ? `<button class="btn" style="background:#553c9a; color:white; padding:4px 10px; font-size:12px; margin-left:5px;" onclick="openReview(${log.id})">Rate</button>` : ''}
-                        </td>
-                    </tr>`;
+        async function reactTo(announcementId, reaction) {
+            try {
+                const res = await fetch(`${BACKEND_URL}/api/reaction`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ user: activeUser, target_type: 'announcement', target_id: announcementId, reaction }),
                 });
-                output += '</table>';
-                document.getElementById('historyLog').innerHTML = logs.length ? output : '<p>No orders registered yet.</p>';
-            }
-        });
+                const data = await res.json();
+                if (res.ok) { loadAnnouncements(); }
+            } catch (e) { /* ignore */ }
+        }
 
-        // ----- REVIEWS -----
-        function openReview(txnId) {
-            const stars = prompt("Rate this order (1-5 stars):", "5");
-            const rating = parseInt(stars, 10);
-            if (!rating || rating < 1 || rating > 5) { alert("Please enter 1-5."); return; }
-            const comment = prompt("Short comment (optional):", "") || "Great service";
-            fetch(`${BACKEND_URL}/api/review`, {
+        function initReactions() {
+            // reactions are loaded together with announcements; counts are stored per announcement id
+            window.REACTIONS = {};
+            const loadCounts = async () => {
+                try {
+                    const res = await fetch(`${BACKEND_URL}/api/reactions?target_type=announcement`);
+                    const items = await res.json();
+                    // group client-side is not needed; the admin endpoint counts per id
+                    window.REACTIONS = {};
+                } catch (e) { /* ignore */ }
+            };
+            loadCounts();
+        }
+
+        // ----- TRANSACTIONS -----
+        async function loadTransactions() {
+            const user = activeUser;
+            const res = await fetch(`${BACKEND_URL}/api/transactions?user=${encodeURIComponent(user)}`);
+            if (!res.ok) { return; }
+            const logs = await res.json();
+            let output = '<table><tr><th>Ref</th><th>Job</th><th>Total</th><th>Status</th><th>Production</th></tr>';
+            logs.forEach(log => {
+                const ps = log.production_status || 'Awaiting Production';
+                const psColor = ps.includes('Completed') ? 'green' : ps.includes('Cancelled') ? '#c53030' : '#dd6b20';
+                output += `<tr>
+                    <td><strong>#${String(log.id).padStart(4, '0')}</strong></td>
+                    <td>${esc(log.job_type)}</td>
+                    <td>₦${Number(log.total_price || 0).toLocaleString()}</td>
+                    <td style="color:${String(log.status).includes('Pending') ? '#c05621' : 'green'};">${esc(log.status)}</td>
+                    <td style="color:${psColor}; font-weight:bold;">${esc(ps)}</td>
+                </tr>`;
+            });
+            document.getElementById('historyLog').innerHTML = logs.length ? output + '</table>' : '<p>No orders yet.</p>';
+        }
+
+        // ----- JOB UPDATES -----
+        async function loadJobUpdates() {
+            try {
+                const res = await fetch(`${BACKEND_URL}/api/my-job-updates?user=${encodeURIComponent(activeUser)}`);
+                const items = await res.json();
+                const wrap = document.getElementById('jobUpdatesList');
+                if (!items.length) {
+                    wrap.innerHTML = '<p style="color:#999;">No job updates yet.</p>';
+                    return;
+                }
+                wrap.innerHTML = items.map(u => `
+                    <div style="background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:12px;margin-bottom:10px;">
+                        <p style="font-size:13px;color:#2d3748;">${esc(u.text)}</p>
+                        <p style="font-size:11px;color:#a0aec0;margin-top:6px;">
+                            ${u.status === 'Approved' ? 'Published' : (u.status === 'Rejected' ? 'Not published' : 'Awaiting admin approval')}
+                            &middot; ${u.created_at}
+                        </p>
+                    </div>`).join('');
+            } catch (e) { /* ignore */ }
+        }
+
+        async function postJobUpdate() {
+            const txnSelect = document.getElementById('jobUpdateTxn');
+            const textInput = document.getElementById('jobUpdateText');
+            const txnId = txnSelect.value;
+            const text = textInput.value.trim();
+            if (!txnId || !text) { alert('Choose a job and type your update.'); return; }
+            const res = await fetch(`${BACKEND_URL}/api/job-update`, {
                 method: 'POST',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({ user: localStorage.getItem('active_user') || 'guest', txn_id: txnId, rating, comment }),
-            }).then(r => r.json()).then(d => { alert(d.message); });
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ user: activeUser, txn_id: parseInt(txnId, 10), text }),
+            });
+            const data = await res.json();
+            alert(data.message);
+            textInput.value = '';
+            loadJobUpdates();
         }
 
         // ----- SUPPORT TICKETS -----
         async function loadTickets() {
-            const user = localStorage.getItem('active_user') || 'guest';
-            try {
-                const res = await fetch(`${BACKEND_URL}/api/my-tickets?user=${encodeURIComponent(user)}`);
-                const tickets = await res.json();
-                const wrap = document.getElementById('ticketList');
-                if (!tickets.length) { wrap.innerHTML = '<p style="color:#999;">No messages yet.</p>'; return; }
-                wrap.innerHTML = tickets.map(t => `
-                    <div style="background:#fff; border:1px solid #e2e8f0; border-radius:8px; padding:12px; margin-bottom:10px;">
-                        <p style="font-size:13px; color:#2d3748;"><strong>You:</strong> ${t.message.replace(/</g,'&lt;')}</p>
-                        <p style="font-size:11px; color:#a0aec0;">${t.created_at}</p>
-                        ${t.reply ? `<p style="font-size:13px; color:#276749; margin-top:8px;"><strong>Admin:</strong> ${t.reply.replace(/</g,'&lt;')}</p>` : '<p style="font-size:12px; color:#dd6b20; margin-top:8px;">Awaiting reply...</p>'}
-                    </div>
-                `).join('');
-            } catch (e) { /* ignore */ }
+            const res = await fetch(`${BACKEND_URL}/api/my-tickets?user=${encodeURIComponent(activeUser)}`);
+            const tickets = await res.json();
+            const wrap = document.getElementById('ticketList');
+            if (!tickets.length) { wrap.innerHTML = '<p style="color:#999;">No messages yet.</p>'; return; }
+            wrap.innerHTML = tickets.map(t => `
+                <div style="background:#fff; border:1px solid #e2e8f0; border-radius:8px; padding:12px; margin-bottom:10px;">
+                    <p style="font-size:13px; color:#2d3748;"><strong>You:</strong> ${esc(t.message)}</p>
+                    <p style="font-size:11px; color:#a0aec0;">${t.created_at}</p>
+                    ${t.reply ? `<p style="font-size:13px; color:#276749; margin-top:8px;"><strong>Admin:</strong> ${esc(t.reply)}</p>` : '<p style="font-size:12px; color:#dd6b20; margin-top:8px;">Awaiting reply...</p>'}
+                </div>`).join('');
         }
 
         async function sendTicket() {
@@ -193,14 +284,45 @@
             if (!msg) { alert('Type a message first.'); return; }
             const res = await fetch(`${BACKEND_URL}/api/ticket`, {
                 method: 'POST',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({ username: localStorage.getItem('active_user') || 'guest', message: msg }),
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ username: activeUser, message: msg }),
             });
             const data = await res.json();
             alert(data.message);
             document.getElementById('ticketMsg').value = '';
             loadTickets();
         }
+
+        // ----- NAVIGATION -----
+        document.getElementById('navHome').addEventListener('click', (e) => {
+            e.preventDefault();
+            document.getElementById('homePanel').style.display = 'block';
+            document.getElementById('transactPanel').style.display = 'none';
+            document.getElementById('supportPanel').style.display = 'none';
+        });
+        document.getElementById('navSupport').addEventListener('click', (e) => {
+            e.preventDefault();
+            document.getElementById('homePanel').style.display = 'none';
+            document.getElementById('transactPanel').style.display = 'none';
+            document.getElementById('supportPanel').style.display = 'block';
+            loadTickets();
+        });
+        document.getElementById('navTransact').addEventListener('click', async (e) => {
+            e.preventDefault();
+            document.getElementById('homePanel').style.display = 'none';
+            document.getElementById('transactPanel').style.display = 'block';
+            loadTransactions();
+            loadJobUpdates();
+        });
+
+        // ----- INIT -----
+        loadProfile();
+        loadNotifications();
+        markNotificationsRead();
+        loadAnnouncements();
+        initReactions();
+        loadTransactions();
+        loadJobUpdates();
     </script>
 </body>
 </html>

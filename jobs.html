@@ -48,6 +48,17 @@
                 </select>
                 <label style="font-size:12px; display:block; margin-top:10px; font-weight:600;">Number of Copies (Max 1,000,000)</label>
                 <input type="number" id="stickCopies" value="1" min="1" max="1000000" class="input-field" style="margin-top:5px;">
+                <label style="font-size:12px; display:block; margin-top:10px; font-weight:600;">Notes / Special Instructions (Optional)</label>
+                <textarea id="stickNotes" rows="2" class="input-field" style="margin-top:5px;" placeholder="Tell us about your job (max 1000 words)"></textarea>
+                <select id="stickNotesCat" class="input-field" style="margin-top:5px;">
+                    <option value="Design / Instructions">Design / Instructions</option>
+                    <option value="Size & Colour">Size & Colour</option>
+                    <option value="Special Requests">Special Requests</option>
+                    <option value="Other">Other</option>
+                </select>
+                <label style="font-size:12px; display:block; margin-top:10px; font-weight:600;">
+                    <input type="checkbox" id="stickNegotiate" style="width:16px; height:16px; accent-color:#553c9a;"> Request price negotiation before payment
+                </label>
                 <button class="btn" onclick="calculateStickerPrice()">Compute Production Cost</button>
                 <label style="font-size:12px; display:block; margin-top:10px; font-weight:600;">Upload Job File / Artwork (Optional)</label>
                 <input type="file" id="stickFile" class="input-field" style="margin-top:5px;">
@@ -75,6 +86,17 @@
                 </select>
                 <label style="font-size:12px; display:block; margin-top:10px; font-weight:600;">Number of Copies (Max 1,000,000)</label>
                 <input type="number" id="flexCopies" value="1" min="1" max="1000000" class="input-field" style="margin-top:5px;">
+                <label style="font-size:12px; display:block; margin-top:10px; font-weight:600;">Notes / Special Instructions (Optional)</label>
+                <textarea id="flexNotes" rows="2" class="input-field" style="margin-top:5px;" placeholder="Tell us about your job (max 1000 words)"></textarea>
+                <select id="flexNotesCat" class="input-field" style="margin-top:5px;">
+                    <option value="Design / Instructions">Design / Instructions</option>
+                    <option value="Size & Colour">Size & Colour</option>
+                    <option value="Special Requests">Special Requests</option>
+                    <option value="Other">Other</option>
+                </select>
+                <label style="font-size:12px; display:block; margin-top:10px; font-weight:600;">
+                    <input type="checkbox" id="flexNegotiate" style="width:16px; height:16px; accent-color:#553c9a;"> Request price negotiation before payment
+                </label>
                 <button class="btn" onclick="calculateFlexPrice()">Compute Flex Cost</button>
                 <label style="font-size:12px; display:block; margin-top:10px; font-weight:600;">Upload Job File / Artwork (Optional)</label>
                 <input type="file" id="flexFile" class="input-field" style="margin-top:5px;">
@@ -98,6 +120,17 @@
                     <option value="0.25">VIP Surcharge Processing </option>
                     <option value="0.00">Standard Timeline Processing (No Extra Charge)</option>
                 </select>
+                <label style="font-size:12px; display:block; margin-top:10px; font-weight:600;">Notes / Special Instructions (Optional)</label>
+                <textarea id="mugNotes" rows="2" class="input-field" style="margin-top:5px;" placeholder="Tell us about your job (max 1000 words)"></textarea>
+                <select id="mugNotesCat" class="input-field" style="margin-top:5px;">
+                    <option value="Design / Instructions">Design / Instructions</option>
+                    <option value="Size & Colour">Size & Colour</option>
+                    <option value="Special Requests">Special Requests</option>
+                    <option value="Other">Other</option>
+                </select>
+                <label style="font-size:12px; display:block; margin-top:10px; font-weight:600;">
+                    <input type="checkbox" id="mugNegotiate" style="width:16px; height:16px; accent-color:#553c9a;"> Request price negotiation before payment
+                </label>
                 <button class="btn" onclick="calculateMugPrice()">Compute Mug Cost</button>
                 <label style="font-size:12px; display:block; margin-top:10px; font-weight:600;">Upload Design / Artwork (Optional)</label>
                 <input type="file" id="mugFile" class="input-field" style="margin-top:5px;">
@@ -119,6 +152,17 @@
                     <option value="0.25">VIP Surcharge Processing </option>
                     <option value="0.00">Standard Timeline Processing (No Extra Charge)</option>
                 </select>
+                <label style="font-size:12px; display:block; margin-top:10px; font-weight:600;">Notes / Special Instructions (Optional)</label>
+                <textarea id="fixedNotes" rows="2" class="input-field" style="margin-top:5px;" placeholder="Tell us about your job (max 1000 words)"></textarea>
+                <select id="fixedNotesCat" class="input-field" style="margin-top:5px;">
+                    <option value="Design / Instructions">Design / Instructions</option>
+                    <option value="Size & Colour">Size & Colour</option>
+                    <option value="Special Requests">Special Requests</option>
+                    <option value="Other">Other</option>
+                </select>
+                <label style="font-size:12px; display:block; margin-top:10px; font-weight:600;">
+                    <input type="checkbox" id="fixedNegotiate" style="width:16px; height:16px; accent-color:#553c9a;"> Request price negotiation before payment
+                </label>
                 <button class="btn" onclick="calculateFixedPrice()">Compute Printout Cost</button>
                 <label style="font-size:12px; display:block; margin-top:10px; font-weight:600;">Upload Document (Optional)</label>
                 <input type="file" id="fixedFile" class="input-field" style="margin-top:5px;">
@@ -156,6 +200,17 @@
                     <option value="0.25">VIP Surcharge Processing </option>
                     <option value="0.00">Standard Timeline Processing (No Extra Charge)</option>
                 </select>
+                <label style="font-size:12px; display:block; margin-top:10px; font-weight:600;">Notes / Special Instructions (Optional)</label>
+                <textarea id="typingNotes" rows="2" class="input-field" style="margin-top:5px;" placeholder="Tell us about your job (max 1000 words)"></textarea>
+                <select id="typingNotesCat" class="input-field" style="margin-top:5px;">
+                    <option value="Design / Instructions">Design / Instructions</option>
+                    <option value="Size & Colour">Size & Colour</option>
+                    <option value="Special Requests">Special Requests</option>
+                    <option value="Other">Other</option>
+                </select>
+                <label style="font-size:12px; display:block; margin-top:10px; font-weight:600;">
+                    <input type="checkbox" id="typingNegotiate" style="width:16px; height:16px; accent-color:#553c9a;"> Request price negotiation before payment
+                </label>
                 <button class="btn" onclick="calculateTypingPrice()">Compute Document Cost</button>
                 <label style="font-size:12px; display:block; margin-top:10px; font-weight:600;">Upload Document (Optional)</label>
                 <input type="file" id="typingFile" class="input-field" style="margin-top:5px;">
@@ -181,10 +236,34 @@
                 </div>
                 <label style="font-size:14px; display:block; font-weight:600; margin-top:10px;">Select Size</label>
                 <select id="designSize" class="input-field"></select>
-                <label style="font-size:12px; display:block; margin-top:10px; font-weight:600;">Number of Copies (Max 1,000,000)</label>
+                <label style="font-size:12px; display:block; margin-top:10px; font-weight:600;" id="designCopiesLabel">Copies per Pack (Max 1,000,000)</label>
                 <input type="number" id="designCopies" value="1" min="1" max="1000000" class="input-field">
+                <p style="font-size:12px; color:var(--text-muted); margin-top:5px;" id="designCopiesHint">For Envelopes: 1 pack = 25 copies. For Cards: each number is the number of copies.</p>
+                <label style="font-size:12px; display:block; margin-top:10px; font-weight:600;">Notes / Special Instructions (Optional)</label>
+                <textarea id="designNotes" rows="2" class="input-field" style="margin-top:5px;" placeholder="Tell us about your job (max 1000 words)"></textarea>
+                <select id="designNotesCat" class="input-field" style="margin-top:5px;">
+                    <option value="Design / Instructions">Design / Instructions</option>
+                    <option value="Size & Colour">Size & Colour</option>
+                    <option value="Special Requests">Special Requests</option>
+                    <option value="Other">Other</option>
+                </select>
+                <label style="font-size:12px; display:block; margin-top:10px; font-weight:600;">
+                    <input type="checkbox" id="designNegotiate" style="width:16px; height:16px; accent-color:#553c9a;"> Request price negotiation before payment
+                </label>
                 <button class="btn" onclick="calculateDesignPrice()">Compute Design Cost</button>
                 <div id="designOutput" style="margin-top:15px; font-weight:bold;"></div>
+            </div>
+
+            <!-- SUBSIDIARY CARD PROMO -->
+            <div class="job-card" style="border: 2px dashed var(--border-color); text-align:center;" data-category="large">
+                <h3>🌟 FodaKem Sub Card - 25% Off Every Job</h3>
+                <p style="color:var(--text-muted); font-size:14px;">
+                    Get our Sub Card and enjoy <strong>25% discount</strong> off every job you do,
+                    on top of everything normal customers get. Sign up with your full name, sex and
+                    nickname, upload your VIP card for verification, and the Sub card lasts as long
+                    as your VIP card. Sub usage: twice a week.
+                </p>
+                <a href="VIP-CARD.html" class="btn" style="margin-top:15px; display:inline-block; text-decoration:none; background:#6b46c1;">See Sub Card Details</a>
             </div>
 
             <!-- SPECIALIZED SUPPORT DESK -->
@@ -201,10 +280,18 @@
         // Auto-detects the server: works locally (127.0.0.1:5000) and on Render
         const BACKEND_URL = window.location.origin;
 
-        async function routeToCheckout(jobType, actualPrice, surchargeRate, params, fileInputId) {
+        async function routeToCheckout(source, jobType, actualPrice, surchargeRate, params, fileInputId) {
             // Upload the customer's job file/artwork first, then proceed
             let fileId = '';
             const fileInput = document.getElementById(fileInputId);
+            // Read the notes / negotiation entered on this job card
+            const card = source.closest('.job-card');
+            const notesBox = card.querySelector('textarea');
+            if (notesBox && notesBox.value.trim()) { params.notes = notesBox.value.trim(); }
+            const catSelect = card.querySelector('select');
+            if (catSelect && catSelect.value) { params.notes_category = catSelect.value; }
+            const negotiateBox = card.querySelector('input[type=checkbox]');
+            if (negotiateBox && negotiateBox.checked) { params.negotiate = 'yes'; }
             if (fileInput && fileInput.files && fileInput.files[0]) {
                 const formData = new FormData();
                 formData.append('file', fileInput.files[0]);
@@ -243,7 +330,7 @@
                     FodaKem VIP Urgency Charge: ₦${vipCharge.toLocaleString()}<br>
                     <strong>Total Payable: ₦${total.toLocaleString()}</strong>
                 </div>
-                <button class="btn" style="background:green;" onclick="routeToCheckout('Sticker Job (${w}x${h} ft x ${copies} copies)', ${baseCost}, ${surchargeRate}, {w: ${w}, h: ${h}, copies: ${copies}}, 'stickFile')">Proceed to Payment Gateway</button>
+                <button class="btn" style="background:green;" onclick="routeToCheckout(this, 'Sticker Job (${w}x${h} ft x ${copies} copies)', ${baseCost}, ${surchargeRate}, {w: ${w}, h: ${h}, copies: ${copies}}, 'stickFile')">Proceed to Payment Gateway</button>
             `;
         }
 
@@ -263,7 +350,7 @@
                     Base Price: ₦${baseCost.toLocaleString()}<br>
                     <strong>Total Payable: ₦${total.toLocaleString()}</strong>
                 </div>
-                <button class="btn" style="background:green;" onclick="routeToCheckout('Banner/Flex Job (${w}x${h} ft x ${copies} copies)', ${baseCost}, 0, {w: ${w}, h: ${h}, rate: ${tierRate}, copies: ${copies}}, 'flexFile')">Proceed to Payment Gateway</button>
+                <button class="btn" style="background:green;" onclick="routeToCheckout(this, 'Banner/Flex Job (${w}x${h} ft x ${copies} copies)', ${baseCost}, 0, {w: ${w}, h: ${h}, rate: ${tierRate}, copies: ${copies}}, 'flexFile')">Proceed to Payment Gateway</button>
             `;
         }
 
@@ -283,7 +370,7 @@
                     FodaKem VIP Urgency Charge: ₦${vipCharge.toLocaleString()}<br>
                     <strong>Total Payable: ₦${total.toLocaleString()}</strong>
                 </div>
-                <button class="btn" style="background:green;" onclick="routeToCheckout('Mug Cup Job (${copies} copies)', ${baseCost}, ${surchargeRate}, {unit: ${unitPrice}, copies: ${copies}}, 'mugFile')">Proceed to Payment Gateway</button>
+                <button class="btn" style="background:green;" onclick="routeToCheckout(this, 'Mug Cup Job (${copies} copies)', ${baseCost}, ${surchargeRate}, {unit: ${unitPrice}, copies: ${copies}}, 'mugFile')">Proceed to Payment Gateway</button>
             `;
         }
 
@@ -303,7 +390,7 @@
                     FodaKem VIP Urgency Charge: ₦${vipCharge.toLocaleString()}<br>
                     <strong>Total Payable: ₦${total.toLocaleString()}</strong>
                 </div>
-                <button class="btn" style="background:green;" onclick="routeToCheckout('Fixed Printout Job (${copies} copies)', ${baseCost}, ${surchargeRate}, {price: ${unitPrice}, copies: ${copies}}, 'fixedFile')">Proceed to Payment Gateway</button>
+                <button class="btn" style="background:green;" onclick="routeToCheckout(this, 'Fixed Printout Job (${copies} copies)', ${baseCost}, ${surchargeRate}, {price: ${unitPrice}, copies: ${copies}}, 'fixedFile')">Proceed to Payment Gateway</button>
             `;
         }
 
@@ -324,7 +411,7 @@
                     FodaKem VIP Urgency Charge: ₦${vipCharge.toLocaleString()}<br>
                     <strong>Total Payable: ₦${total.toLocaleString()}</strong>
                 </div>
-                <button class="btn" style="background:green;" onclick="routeToCheckout('Typing/Printing Job (${pages} pages x ${copies} copies)', ${baseCost}, ${surchargeRate}, {rate: ${perPageRate}, pages: ${pages}, copies: ${copies}}, 'typingFile')">Proceed to Payment Gateway</button>
+                <button class="btn" style="background:green;" onclick="routeToCheckout(this, 'Typing/Printing Job (${pages} pages x ${copies} copies)', ${baseCost}, ${surchargeRate}, {rate: ${perPageRate}, pages: ${pages}, copies: ${copies}}, 'typingFile')">Proceed to Payment Gateway</button>
             `;
         }
         // ----- VIP STATUS: VIP members get VIP pricing on ALL jobs -----
@@ -344,6 +431,30 @@
                     });
                 }
             } catch (e) { /* ignore */ }
+        }
+
+        // ----- SUBSIDIARY CARD STATUS -----
+        let HAS_SUB = false;
+        async function checkSubStatus() {
+            const user = localStorage.getItem('active_user');
+            if (!user) return;
+            try {
+                const res = await fetch(`${BACKEND_URL}/api/my-sub?user=${encodeURIComponent(user)}`);
+                const data = await res.json();
+                HAS_SUB = data.has_sub === true;
+            } catch (e) {
+                HAS_SUB = false;
+            }
+            applySubStatus();
+        }
+
+        function applySubStatus() {
+            const buttons = ['stickUrgency', 'mugUrgency', 'fixedUrgency', 'typingUrgency'];
+            buttons.forEach(id => {
+                const el = document.getElementById(id);
+                if (!el) return;
+                if (HAS_SUB) { el.value = '-0.25'; }
+            });
         }
 
         // ----- ENVELOPE & CARD DESIGN -----
@@ -368,6 +479,13 @@
         function updateDesignSizes() {
             const item = document.getElementById('designItem').value;
             const sizeSelect = document.getElementById('designSize');
+            const isEnvelope = item === 'envelope';
+            document.getElementById('designCopiesLabel').innerHTML = isEnvelope
+                ? 'Packs (1 pack = 25 copies) (Max 1,000,000)'
+                : 'Copies (Max 1,000,000)';
+            document.getElementById('designCopiesHint').innerHTML = isEnvelope
+                ? 'One pack contains 25 copies. For Cards, the number is the number of copies.'
+                : 'For Cards, each number is the number of copies.';
             sizeSelect.innerHTML = '';
             DESIGN_SIZES[item].forEach(s => {
                 const opt = document.createElement('option');
@@ -386,7 +504,8 @@
             const item = document.getElementById('designItem').value;
             const design = document.getElementById('designStatus').value;
             const size = document.getElementById('designSize').value;
-            const copies = parseInt(document.getElementById('designCopies').value || 1, 10);
+            const packsRaw = parseInt(document.getElementById('designCopies').value || 1, 10);
+            const copies = document.getElementById('designItem').value === 'envelope' ? packsRaw * 25 : packsRaw;
             const fileInput = document.getElementById('designFile');
             if (design === 'yes' && (!fileInput.files || !fileInput.files[0])) {
                 alert('Please upload your design file.');
@@ -409,7 +528,7 @@
                     VIP Charge: ₦${vipCharge.toLocaleString()}<br>
                     <strong>Total Payable: ₦${total.toLocaleString()}</strong>
                 </div>
-                <button class="btn" style="background:green;" onclick="routeToCheckout('${jobType} (${size})', ${baseCost}, ${surchargeRate}, {item: '${item}', design: '${design}', size: '${size}', copies: ${copies}}, 'designFile')">Proceed to Payment Gateway</button>
+                <button class="btn" style="background:green;" onclick="routeToCheckout(this, '${jobType} (${size})', ${baseCost}, ${surchargeRate}, {item: '${item}', design: '${design}', size: '${size}', copies: ${copies}}, 'designFile')">Proceed to Payment Gateway</button>
             `;
         }
 
@@ -470,6 +589,7 @@
         updateDesignSizes();
         loadAvailability();
         checkVipStatus();
+        checkSubStatus();
     </script>
 </body>
 </html>

@@ -21,9 +21,26 @@
                 <p style="font-size:18px; font-weight:bold;">Total Payable Invoice: <strong id="outTotal" style="color:green;">...</strong></p>
             </div>
 
+            <!-- Bank Transfer Section (needs admin approval) -->
+            <div id="transferSection" style="display:none;">
+                <h3 style="color:#1a202c;">Pay via Bank Transfer</h3>
+                <p style="font-size:13px; color:#718096;">Transfer the total to one of the accounts below, then tell us the reference. The admin must approve your transfer before your order starts production.</p>
+                <label style="font-size:13px; font-weight:600; display:block; margin-top:10px;">Receiving account</label>
+                <select id="transferAccount" class="input-field">
+                    <option value="">Select account...</option>
+                    <option value="moniepoint">Moniepoint - FODAKEM UNIQUE GLOBAL RESOURCES LIMITED (8308018146)</option>
+                    <option value="opay">Opay - FATORE OLADELE ADEBAYO (8065867966)</option>
+                    <option value="wema">Wema Bank - FATORE OLADELE ADEBAYO (0235640136)</option>
+                </select>
+                <label style="font-size:13px; font-weight:600; display:block; margin-top:10px;">Transfer reference / proof</label>
+                <input type="text" id="transferRef" class="input-field" placeholder="e.g. transfer ID or reference">
+                <button class="btn" style="background:#2f855a; color:white; margin-top:12px;" onclick="submitTransferOrder()">Submit for Admin Approval</button>
+            </div>
+
             <!-- Paystack Gateway Button Trigger -->
             <button class="btn" style="background:#38a169;" id="paystackBtn" onclick="launchPaystackCheckout()">Securely Pay via Paystack Gateway</button>
             <button class="btn" style="background:#2d3748; color:white; margin-top:10px;" id="cashBtn" onclick="payInCash()">Pay in Cash</button>
+            <button class="btn" style="background:#2b6cb0; color:white; margin-top:10px;" id="transferBtn" onclick="payInTransfer()">Pay via Bank Transfer</button>
             <button class="btn" style="background:#edf2f7; color:#4a5568; margin-top:10px;" onclick="window.location.href='jobs.html'">Cancel Order</button>
         </div>
     </div>
@@ -73,6 +90,7 @@
                 const methods = await res.json();
                 document.getElementById('paystackBtn').style.display = methods.paystack !== false ? '' : 'none';
                 document.getElementById('cashBtn').style.display = methods.cash !== false ? '' : 'none';
+                document.getElementById('transferBtn').style.display = methods.transfer !== false ? '' : 'none';
             } catch (e) { /* ignore */ }
         }
         applyPaymentMethods();
@@ -140,6 +158,38 @@
             } else {
                 const data = await response.json().catch(() => ({}));
                 alert(data.message || 'Could not place cash order.');
+            }
+        }
+
+        async function payInTransfer() {
+            const accountSelect = document.getElementById('transferAccount');
+            const refInput = document.getElementById('transferRef');
+            const accountValue = accountSelect.value;
+            const reference = refInput.value.trim();
+            if (!accountValue) { alert('Choose a receiving account.'); return; }
+            if (!reference) { alert('Enter the transfer reference.'); return; }
+            const accountNumbers = {
+                moniepoint: '8308018146',
+                opay: '8065867966',
+                wema: '0235640136',
+            };
+            const payload = {
+                user: localStorage.getItem('active_user') || 'guest',
+                job_type: job,
+                surcharge_rate: surchargeRate,
+                params: JSON.parse(localStorage.getItem('checkout_params') || '{}'),
+                file_id: localStorage.getItem('checkout_file_id') || '',
+                account: { number: accountNumbers[accountValue], reference: reference },
+            };
+            const response = await fetch(`${BACKEND_URL}/api/transfer-order`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload),
+            });
+            const data = await response.json();
+            alert(data.message);
+            if (response.ok) {
+                window.location.href = data.redirect || 'dashboard.html';
             }
         }
 

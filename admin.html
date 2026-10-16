@@ -405,7 +405,7 @@
                 return true;
             });
             if (!txns.length) { document.getElementById('txnTable').innerHTML = '<p>No orders match.</p>'; return; }
-            let out = `<table><tr><th>#</th><th>User</th><th>Order</th><th>Total</th><th>Payment</th><th>Order Status</th><th>Actions</th></tr>`;
+            let out = `<table><tr><th>#</th><th>User</th><th>Order</th><th>Total</th><th>Payment</th><th>Order Status</th><th>VIP</th><th>Actions</th></tr>`;
             txns.forEach(t => {
                 const ps = t.production_status || 'Awaiting Production';
                 const psColor = ps.includes('Completed') ? 'green' : ps.includes('Cancelled') ? '#c53030' : ps.includes('Ready') ? '#2b6cb0' : '#dd6b20';
@@ -417,6 +417,7 @@
                     <td>₦${Number(t.total_price || 0).toLocaleString()}</td>
                     <td style="color:${payPending ? '#c05621' : 'green'};">${payPending ? 'Cash Pending' : 'Paid'}</td>
                     <td style="color:${psColor}; font-weight:bold;">${ps}</td>
+                    <td>${t.is_vip ? '<span style="background:#6b46c1;color:#fff;padding:2px 8px;border-radius:6px;font-size:11px;">VIP</span>' : 'Normal'}</td>
                     <td style="white-space:normal; min-width:300px;">
                         <select class="input-field" onchange="updateOrderStatus(${t.id}, this.value)">
                             ${ORDER_STATUSES.map(s => `<option ${s === ps ? 'selected' : ''}>${s}</option>`).join('')}

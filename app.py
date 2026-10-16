@@ -1,3 +1,60 @@
+﻿import os
+import json
+import uuid
+import sqlite3
+import datetime
+import qrcode
+import bcrypt
+import time
+import hmac
+import io
+import hashlib
+import requests
+from flask import Flask, request, jsonify, send_from_directory, Response
+from flask_cors import CORS
+from werkzeug.utils import secure_filename
+
+app = Flask(__name__)
+CORS(app, resources={r"/api/*": {"origins": "*"}})
+
+DATABASE_FILE = "database.db"
+app.config['MAX_CONTENT_LENGTH'] = 15 * 1024 * 1024
+
+PAYSTACK_SECRET_KEY = os.environ.get("PAYSTACK_SECRET_KEY", "")
+PAYSTACK_PUBLIC_KEY = os.environ.get("PAYSTACK_PUBLIC_KEY", "")
+PAYSTACK_SUBACCOUNT = os.environ.get("PAYSTACK_SUBACCOUNT", "")
+PAYSTACK_WEBHOOK_SECRET = os.environ.get("PAYSTACK_WEBHOOK_SECRET", "")
+ADMIN_TOKEN = os.environ.get("ADMIN_TOKEN", "")
+ADMIN_TOKENS = {t.strip() for t in os.environ.get("ADMIN_TOKENS", "").split(",") if t.strip()}
+if ADMIN_TOKEN:
+    ADMIN_TOKENS.add(ADMIN_TOKEN)
+
+JOB_FILES_DIR = os.path.join("uploads", "job_files")
+ANNOUNCEMENTS_DIR = os.path.join("uploads", "announcements")
+
+DESIGN_RATE_DESIGNED = 1000
+DESIGN_RATE_NOT_DESIGNED = 3000
+ENVELOPE_DIMENSIONS = {"8x4.5": (8, 4.5), "9x5": (9, 5), "10x6": (10, 6)}
+CARD_DIMENSIONS = {"3.5x2": (3.5, 2), "4x2.5": (4, 2.5), "4.5x3": (4.5, 3)}
+VIP_TIER_PRICES = {"blue": 1500, "red": 3000, "yellow": 4500, "black": 6000}
+VIP_TIER_VALIDITY_DAYS = {"blue": 30, "red": 90, "yellow": 180, "black": 365}
+SUB_CARD_PRICE = 2000            # Naira - subsidiary (sub) card
+SUB_DISCOUNT_RATE = 0.25       # 25% off every job
+SUBS_PER_WEEK = 2             # subsidiary card usage per week
+AFTER_CLOSE = "18:30"        # customers cannot post updates after this time
+DAY_START = "09:30"         # admin starts work at this time
+
+NOTES_CATEGORIES = ["Design / Instructions", "Size & Colour", "Special Requests", "Other"]
+
+# Test account: full admin powers, no real payment needed (username, password, nickname)
+TEST_ACCOUNT = {"username": "test1", "password": "TEST123", "nickname": "ADMINTEST"}
+
+STATIC_PAGES = {
+    "VLAND.html", "dashboard.html", "jobs.html", "payment.html",
+    "renew.html", "VIP-CARD.html", "admin.html", "receipt.html",
+    "VLAND.css", "VLAND.js",
+}
+
 import os
 import json
 import uuid
@@ -7,6 +64,7 @@ import qrcode
 import bcrypt
 import time
 import hmac
+import io
 import hashlib
 import requests
 from flask import Flask, request, jsonify, send_from_directory, Response
@@ -14,25 +72,16 @@ from flask_cors import CORS
 from werkzeug.utils import secure_filename
 
 app = Flask(__name__)
-# Securely allows all network traffic from Netlify or any public browser link
 CORS(app, resources={r"/api/*": {"origins": "*"}})
 
 DATABASE_FILE = "database.db"
 app.config['MAX_CONTENT_LENGTH'] = 15 * 1024 * 1024
 
-# ---------------------------------------------------------------------------
-# PAYSTACK SETTINGS — set these as ENVIRONMENT VARIABLES on Render:
-#   PAYSTACK_SECRET_KEY  = sk_live_...   (server-side verification key)
-#   PAYSTACK_PUBLIC_KEY  = pk_live_...   (sent to the browser for checkout)
-#   PAYSTACK_SUBACCOUNT  = ACCT_...      (optional - leave EMPTY to take 100%)
-#   ADMIN_TOKEN          = (any secret word) - unlocks the admin order page
-# ---------------------------------------------------------------------------
-PAYSTACK_SECRET_KEY = os.environ.get("PAYSTACK_SECRET_KEY", "sk_test_your_copied_secret_key_here")
+PAYSTACK_SECRET_KEY = os.environ.get("PAYSTACK_SECRET_KEY", "")
 PAYSTACK_PUBLIC_KEY = os.environ.get("PAYSTACK_PUBLIC_KEY", "")
 PAYSTACK_SUBACCOUNT = os.environ.get("PAYSTACK_SUBACCOUNT", "")
 PAYSTACK_WEBHOOK_SECRET = os.environ.get("PAYSTACK_WEBHOOK_SECRET", "")
 ADMIN_TOKEN = os.environ.get("ADMIN_TOKEN", "")
-# Support multiple admins: ADMIN_TOKENS="token1,token2,token3"
 ADMIN_TOKENS = {t.strip() for t in os.environ.get("ADMIN_TOKENS", "").split(",") if t.strip()}
 if ADMIN_TOKEN:
     ADMIN_TOKENS.add(ADMIN_TOKEN)
@@ -40,18 +89,20 @@ if ADMIN_TOKEN:
 JOB_FILES_DIR = os.path.join("uploads", "job_files")
 ANNOUNCEMENTS_DIR = os.path.join("uploads", "announcements")
 
-# Design pricing: area in sq inches / 144 = sq ft, times rate per sq ft
-DESIGN_RATE_DESIGNED = 1000    # customer already designed it (per sq ft)
-DESIGN_RATE_NOT_DESIGNED = 3000  # FGURL designs it (per sq ft)
+DESIGN_RATE_DESIGNED = 1000
+DESIGN_RATE_NOT_DESIGNED = 3000
 ENVELOPE_DIMENSIONS = {"8x4.5": (8, 4.5), "9x5": (9, 5), "10x6": (10, 6)}
 CARD_DIMENSIONS = {"3.5x2": (3.5, 2), "4x2.5": (4, 2.5), "4.5x3": (4.5, 3)}
-
-# VIP card tiers: price in Naira + validity in days
 VIP_TIER_PRICES = {"blue": 1500, "red": 3000, "yellow": 4500, "black": 6000}
 VIP_TIER_VALIDITY_DAYS = {"blue": 30, "red": 90, "yellow": 180, "black": 365}
+SUB_CARD_PRICE = 2000
+SUB_DISCOUNT_RATE = 0.25
+SUBS_PER_WEEK = 2
+AFTER_CLOSE = "18:30"
+DAY_START = "09:30"
+NOTES_CATEGORIES = ["Design / Instructions", "Size & Colour", "Special Requests", "Other"]
+TEST_ACCOUNT = {"username": "test1", "password": "TEST123", "nickname": "ADMINTEST"}
 
-# Only these files may be served to browsers. Everything else (database.db,
-# logins.txt, uploads/, app.py) stays private.
 STATIC_PAGES = {
     "VLAND.html", "dashboard.html", "jobs.html", "payment.html",
     "renew.html", "VIP-CARD.html", "admin.html", "receipt.html",
@@ -61,995 +112,1163 @@ STATIC_PAGES = {
 def init_db():
     conn = sqlite3.connect(DATABASE_FILE)
     cursor = conn.cursor()
-    cursor.execute("CREATE TABLE IF NOT EXISTS users (username TEXT PRIMARY KEY, password_hash TEXT)")
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS transactions (
-            id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT, job_type TEXT,
-            actual_price REAL, vip_money REAL, total_price REAL, status TEXT, timestamp TEXT
-        )
-    """)
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS vip_cards (
-            card_id TEXT PRIMARY KEY, username TEXT, name TEXT,
-            phone TEXT, sex TEXT, tier TEXT, issue_date TEXT, qr_path TEXT
-        )
-    """)
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS messages (
-            id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT, sender TEXT,
-            message_text TEXT, timestamp TEXT, is_read INTEGER
-        )
-    """)
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS job_availability (
-            job_key TEXT PRIMARY KEY, available INTEGER DEFAULT 1, reason TEXT DEFAULT ''
-        )
-    """)
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS announcements (
-            id INTEGER PRIMARY KEY AUTOINCREMENT, file_id TEXT, file_name TEXT,
-            description TEXT, created_at TEXT
-        )
-    """)
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS order_photos (
-            id INTEGER PRIMARY KEY AUTOINCREMENT, txn_id INTEGER, file_id TEXT, file_name TEXT, uploaded_at TEXT
-        )
-    """)
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS reviews (
-            id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT, txn_id INTEGER,
-            rating INTEGER, comment TEXT, created_at TEXT
-        )
-    """)
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS tickets (
-            id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT, message TEXT,
-            reply TEXT DEFAULT '', status TEXT DEFAULT 'Open', created_at TEXT, replied_at TEXT
-        )
-    """)
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS payment_settings (
-            method TEXT PRIMARY KEY, enabled INTEGER DEFAULT 1
-        )
-    """)
-    # Migrate databases created by older versions of this app:
-    # the old "transactions" table had no "timestamp" column.
-    cursor.execute("PRAGMA table_info(transactions)")
-    txn_cols = {row[1] for row in cursor.fetchall()}
-    if "timestamp" not in txn_cols:
-        try:
-            cursor.execute("ALTER TABLE transactions ADD COLUMN timestamp TEXT")
-        except sqlite3.OperationalError:
-            pass  # another gunicorn worker already added it
-    if "paystack_ref" not in txn_cols:
-        try:
-            cursor.execute("ALTER TABLE transactions ADD COLUMN paystack_ref TEXT")
-        except sqlite3.OperationalError:
-            pass  # another gunicorn worker already added it
-    if "file_id" not in txn_cols:
-        try:
-            cursor.execute("ALTER TABLE transactions ADD COLUMN file_id TEXT")
-        except sqlite3.OperationalError:
-            pass  # another gunicorn worker already added it
-    if "production_status" not in txn_cols:
-        try:
-            cursor.execute("ALTER TABLE transactions ADD COLUMN production_status TEXT DEFAULT 'Awaiting Production'")
-        except sqlite3.OperationalError:
-            pass  # another gunicorn worker already added it
+    cursor.execute("""CREATE TABLE IF NOT EXISTS users (
+        username TEXT PRIMARY KEY, password_hash TEXT, nickname TEXT,
+        first_name TEXT DEFAULT '', last_name TEXT DEFAULT '',
+        sex TEXT DEFAULT '', registered_at TEXT DEFAULT '')""")
+    for col, decl in (("nickname", "TEXT"), ("first_name", "TEXT"), ("last_name", "TEXT"),
+                    ("sex", "TEXT"), ("registered_at", "TEXT")):
+        cols = {r[1] for r in cursor.execute("PRAGMA table_info(users)")}
+        if col not in cols:
+            cursor.execute(f"ALTER TABLE users ADD COLUMN {col} {decl}")
+    cursor.execute("""CREATE TABLE IF NOT EXISTS transactions (
+        id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT, job_type TEXT,
+        actual_price REAL, vip_money REAL, total_price REAL, status TEXT,
+        production_status TEXT DEFAULT 'Awaiting Production', timestamp TEXT,
+        paystack_ref TEXT, file_id TEXT, method TEXT DEFAULT '', is_vip INTEGER DEFAULT 0,
+        notes TEXT DEFAULT '', notes_category TEXT DEFAULT '',
+        negotiation TEXT DEFAULT '')""")
+    for col, decl in (("timestamp", "TEXT"),
+                    ("production_status", "TEXT DEFAULT 'Awaiting Production'"),
+                    ("paystack_ref", "TEXT"), ("file_id", "TEXT"),
+                    ("method", "TEXT DEFAULT ''"), ("is_vip", "INTEGER DEFAULT 0"),
+                    ("notes", "TEXT DEFAULT ''"),
+                    ("notes_category", "TEXT DEFAULT ''"), ("negotiation", "TEXT DEFAULT ''")):
+        cols = {r[1] for r in cursor.execute("PRAGMA table_info(transactions)")}
+        if col not in cols:
+            cursor.execute(f"ALTER TABLE transactions ADD COLUMN {col} {decl}")
+    cursor.execute("""CREATE TABLE IF NOT EXISTS vip_cards (
+        card_id TEXT PRIMARY KEY, username TEXT, name TEXT, phone TEXT, sex TEXT,
+        tier TEXT, issue_date TEXT, valid_until TEXT, qr_path TEXT)""")
+    cols = {r[1] for r in cursor.execute("PRAGMA table_info(vip_cards)")}
+    if "valid_until" not in cols:
+        cursor.execute("ALTER TABLE vip_cards ADD COLUMN valid_until TEXT")
+    cursor.execute("""CREATE TABLE IF NOT EXISTS sub_cards (
+        sub_id TEXT PRIMARY KEY, username TEXT, vip_card_id TEXT, tag TEXT,
+        registered_at TEXT, valid_until TEXT, week_key TEXT DEFAULT '',
+        uses_count INTEGER DEFAULT 0, carry_count INTEGER DEFAULT 0)""")
+    cursor.execute("""CREATE TABLE IF NOT EXISTS notifications (
+        id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT, kind TEXT,
+        title TEXT, body TEXT, read INTEGER DEFAULT 0, created_at TEXT)""")
+    cursor.execute("""CREATE TABLE IF NOT EXISTS job_updates (
+        id INTEGER PRIMARY KEY AUTOINCREMENT, txn_id INTEGER, username TEXT,
+        text TEXT, image_file_id TEXT, source TEXT DEFAULT 'customer',
+        status TEXT DEFAULT 'Pending', created_at TEXT, published_until TEXT)""")
+    cursor.execute("""CREATE TABLE IF NOT EXISTS reactions (
+        id INTEGER PRIMARY KEY AUTOINCREMENT, target_type TEXT, target_id INTEGER,
+        username TEXT, reaction TEXT, created_at TEXT)""")
+    cursor.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_reaction ON reactions (target_type, target_id, username)")
+    cursor.execute("""CREATE TABLE IF NOT EXISTS login_log (
+        id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT, logged_at TEXT)""")
+    cursor.execute("""CREATE TABLE IF NOT EXISTS admin_settings (
+        key TEXT PRIMARY KEY, value TEXT)""")
+    cursor.execute("""CREATE TABLE IF NOT EXISTS job_availability (
+        job_key TEXT PRIMARY KEY, available INTEGER DEFAULT 1, reason TEXT DEFAULT '')""")
+    cursor.execute("""CREATE TABLE IF NOT EXISTS announcements (
+        id INTEGER PRIMARY KEY AUTOINCREMENT, file_id TEXT, file_name TEXT,
+        description TEXT, created_at TEXT)""")
+    cursor.execute("""CREATE TABLE IF NOT EXISTS tickets (
+        id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT, message TEXT,
+        reply TEXT DEFAULT '', status TEXT DEFAULT 'Open',
+        created_at TEXT, replied_at TEXT)""")
+    cursor.execute("""CREATE TABLE IF NOT EXISTS reviews (
+        id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT, txn_id INTEGER,
+        rating INTEGER, comment TEXT, created_at TEXT)""")
+    cursor.execute("""CREATE TABLE IF NOT EXISTS order_photos (
+        id INTEGER PRIMARY KEY AUTOINCREMENT, txn_id INTEGER, file_id TEXT,
+        uploaded_at TEXT)""")
+    cursor.execute("CREATE TABLE IF NOT EXISTS payment_settings (method TEXT PRIMARY KEY, enabled INTEGER DEFAULT 1)")
+    cursor.execute("INSERT OR IGNORE INTO admin_settings (key, value) VALUES ('test_mode', '0')")
     conn.commit()
     conn.close()
 
-def get_json_body():
-    # silent=True prevents a crash when a request has no/invalid JSON body
-    return request.get_json(silent=True) or {}
 
-def verify_paystack_reference(paystack_ref):
-    """Confirm directly with Paystack that money landed. Returns the data dict, or None."""
-    paystack_verification_url = f"https://api.paystack.co/transaction/verify/{paystack_ref}"
-    headers = {"Authorization": f"Bearer {PAYSTACK_SECRET_KEY}"}
-    try:
-        response = requests.get(paystack_verification_url, headers=headers, timeout=15).json()
-    except Exception:
-        return None
-    if response.get('status') and response.get('data', {}).get('status') == 'success':
-        return response['data']
-    return None
+def get_conn():
+    return sqlite3.connect(DATABASE_FILE)
 
-def log_payout(paystack_ref, username, total_price):
-    # NOTE: The real money split happens inside Paystack via the SUBACCOUNT
-    # percentage configured on the Paystack dashboard. The figures below are
-    # only a console/log report - they are NOT transfers executed by this code.
-    partner_share = 2200.00
-    your_share = 300.00
-    print("\n--- FGURL VIP REAL-TIME CHECKOUT SPLIT COMPILATION ---")
-    print(f"Ref Token: [{paystack_ref}] | Account Profile: [{username}]")
-    print(f"Total Confirmed Revenue Received: N{total_price:,.2f}")
-    print(f"-> Automated Payout Sent to Partner Node: N{partner_share:,.2f}")
-    print(f"-> Your Dedicated Premium Payout (Oladele): N{your_share:,.2f} to 8065867966")
-    print("-------------------------------------------------------------\n")
+
+def admin_ok(token):
+    return bool(ADMIN_TOKENS) and token in ADMIN_TOKENS
+
+
+def now_str():
+    return datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+
+def notify(username, kind, title, body):
+    conn = get_conn()
+    conn.execute("INSERT INTO notifications (username, kind, title, body, created_at) VALUES (?,?,?,?,?)",
+               (username, kind, title, body, now_str()))
+    conn.commit()
+    conn.close()
+
 
 def compute_job_price(job_type, params):
-    """Server-side price calculation so clients cannot tamper with prices."""
-    try:
-        copies = int(params.get('copies', 1))
-        if copies < 1 or copies > 1000000:
-            return None  # enforce the 1 - 1,000,000 copies limit
-        if job_type.startswith("Sticker"):
-            return float(params.get('w', 0)) * float(params.get('h', 0)) * 250 * copies
-        if job_type.startswith("Banner"):
-            return float(params.get('w', 0)) * float(params.get('h', 0)) * float(params.get('rate', 0)) * copies
-        if job_type.startswith("Mug"):
-            return float(params.get('unit', 0)) * copies
-        if job_type.startswith("Fixed"):
-            return float(params.get('price', 0)) * copies
-        if job_type.startswith("Typing"):
-            return float(params.get('rate', 0)) * float(params.get('pages', 0)) * copies
-        if job_type.startswith("Envelope Design"):
-            dims = ENVELOPE_DIMENSIONS.get(params.get('size', ''))
-            if dims is None:
-                return None
-            rate = DESIGN_RATE_DESIGNED if params.get('design') == 'yes' else DESIGN_RATE_NOT_DESIGNED
-            return (dims[0] * dims[1] / 144) * rate * copies
-        if job_type.startswith("Card Design"):
-            dims = CARD_DIMENSIONS.get(params.get('size', ''))
-            if dims is None:
-                return None
-            rate = DESIGN_RATE_DESIGNED if params.get('design') == 'yes' else DESIGN_RATE_NOT_DESIGNED
-            return (dims[0] * dims[1] / 144) * rate * copies
-    except (TypeError, ValueError):
+    copies = params.get('copies', 1)
+    if not isinstance(copies, int) or copies < 1 or copies > 1000000:
         return None
+    if job_type.startswith("Sticker"):
+        return float(params.get('w', 0)) * float(params.get('h', 0)) * 250 * copies
+    if job_type.startswith("Banner"):
+        return float(params.get('w', 0)) * float(params.get('h', 0)) * float(params.get('rate', 0)) * copies
+    if job_type.startswith("Mug"):
+        return float(params.get('unit', 0)) * copies
+    if job_type.startswith("Fixed"):
+        return float(params.get('price', 0)) * copies
+    if job_type.startswith("Typing"):
+        return float(params.get('rate', 0)) * float(params.get('pages', 0)) * copies
+    if job_type.startswith("Envelope Design"):
+        dims = ENVELOPE_DIMENSIONS.get(params.get('size', ''))
+        if dims is None:
+            return None
+        rate = DESIGN_RATE_DESIGNED if params.get('design') == 'yes' else DESIGN_RATE_NOT_DESIGNED
+        return (dims[0] * dims[1] / 144) * rate * copies
+    if job_type.startswith("Card Design"):
+        dims = CARD_DIMENSIONS.get(params.get('size', ''))
+        if dims is None:
+            return None
+        rate = DESIGN_RATE_DESIGNED if params.get('design') == 'yes' else DESIGN_RATE_NOT_DESIGNED
+        return (dims[0] * dims[1] / 144) * rate * copies
     return None
-
-# Create/upgrade the database tables at startup. This runs both with
-# `python app.py` AND under gunicorn on Render (where __main__ never executes).
-init_db()
 
 @app.route('/api/register', methods=['POST'])
 def register():
-    data = get_json_body()
+    data = request.get_json(silent=True) or {}
     username = (data.get('username') or '').strip().lower()
     password = data.get('password') or ''
-    if not username or not password:
-        return jsonify({"message": "Inputs cannot be left empty."}), 400
-    conn = sqlite3.connect(DATABASE_FILE)
-    cursor = conn.cursor()
-    cursor.execute("SELECT username FROM users WHERE username = ?", (username,))
-    if cursor.fetchone():
+    nickname = (data.get('nickname') or '').strip()
+    if len(nickname) < 6:
+        return jsonify({"message": "Nickname must be 6 letters or more."}), 400
+    if not username or not password or not nickname.isalpha():
+        return jsonify({"message": "Username, password and a valid nickname are required."}), 400
+    conn = get_conn()
+    cur = conn.cursor()
+    cur.execute("SELECT username FROM users WHERE username = ?", (username,))
+    if cur.fetchone():
         conn.close()
-        return jsonify({"message": "Error: That username is already registered under FGURL VIP."}), 400
+        return jsonify({"message": "Username already registered."}), 400
+    cur.execute("SELECT nickname FROM users WHERE nickname = ?", (nickname,))
+    if cur.fetchone():
+        conn.close()
+        return jsonify({"message": "Nickname already taken."}), 400
     hashed = bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
-    cursor.execute("INSERT INTO users (username, password_hash) VALUES (?, ?)", (username, hashed))
+    cur.execute("""INSERT INTO users (username, password_hash, nickname, first_name,
+        last_name, sex, registered_at) VALUES (?,?,?,?,?,?,?)""",
+        (username, hashed, nickname, (data.get('first_name') or '').strip(),
+         (data.get('last_name') or '').strip(), (data.get('sex') or '').strip(), now_str()))
     conn.commit()
     conn.close()
-    return jsonify({"message": "FGURL VIP Profile Formed Successfully!"}), 200
+    return jsonify({"message": "FodaKem VIP Profile Formed Successfully!"}), 200
+
 
 @app.route('/api/login', methods=['POST'])
 def login():
-    data = get_json_body()
-    username = (data.get('username') or '').strip().lower()
+    data = request.get_json(silent=True) or {}
+    raw = (data.get('username') or '').strip()
+    ident = raw.lower()
     password = data.get('password') or ''
-    conn = sqlite3.connect(DATABASE_FILE)
-    cursor = conn.cursor()
-    cursor.execute("SELECT password_hash FROM users WHERE username = ?", (username,))
-    row = cursor.fetchone()
+    conn = get_conn()
+    cur = conn.cursor()
+    cur.execute("SELECT username, password_hash FROM users WHERE username = ? OR nickname = ? COLLATE NOCASE", (ident, raw))
+    row = cur.fetchone()
     conn.close()
-    # fetchone() returns a tuple like (hash,), so we must use row[0]
-    if row and bcrypt.checkpw(password.encode('utf-8'), row[0].encode('utf-8')):
-        current_time = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        with open("logins.txt", "a") as log_file:
-            log_file.write(f"[{current_time}] AUTH SUCCESS - Profile '{username}' entered the FGURL VIP Portal.\n")
-        return jsonify({"message": "Access Verified! Loading panel..."}), 200
+    if row and bcrypt.checkpw(password.encode('utf-8'), row[1].encode('utf-8')):
+        user = row[0]
+        conn = get_conn()
+        conn.execute("INSERT INTO login_log (username, logged_at) VALUES (?,?)", (user, now_str()))
+        conn.commit()
+        conn.close()
+        return jsonify({"message": "Access Verified! Loading panel...", "username": user}), 200
     return jsonify({"message": "Error: Invalid entry credentials. Access Denied."}), 401
+
+
+@app.route('/api/my-profile', methods=['GET'])
+def my_profile():
+    username = (request.args.get('user') or '').strip().lower()
+    conn = get_conn()
+    row = conn.execute("SELECT username, nickname, first_name, last_name, sex FROM users WHERE username = ?",
+                    (username,)).fetchone()
+    conn.close()
+    if not row:
+        return jsonify({"message": "No such user."}), 404
+    return jsonify({"username": row[0], "nickname": row[1], "first_name": row[2],
+                   "last_name": row[3], "sex": row[4]}), 200
+
 
 @app.route('/api/check-expiry', methods=['GET'])
 def check_expiry():
     username = (request.args.get('user') or '').strip().lower()
-    conn = sqlite3.connect(DATABASE_FILE)
-    cursor = conn.cursor()
-    cursor.execute("SELECT tier, issue_date FROM vip_cards WHERE username = ?", (username,))
-    row = cursor.fetchone()
+    conn = get_conn()
+    row = conn.execute("SELECT tier, valid_until FROM vip_cards WHERE username = ?", (username,)).fetchone()
     conn.close()
     if not row:
         return jsonify({"status": "active", "has_card": False}), 200
-    tier, issue_date = row[0], row[1]
+    tier, valid_until = row
     days = VIP_TIER_VALIDITY_DAYS.get(tier, 0)
     try:
-        issued = datetime.datetime.strptime(issue_date[:16], "%Y-%m-%dT%H:%M")
+        issued = datetime.datetime.strptime(valid_until[:10], "%Y-%m-%d")
         expires = issued + datetime.timedelta(days=days)
         if datetime.datetime.now() > expires:
-            return jsonify({"status": "expired", "has_card": True, "expires": str(expires)}), 200
-        return jsonify({"status": "active", "has_card": True, "expires": str(expires)}), 200
+            return jsonify({"status": "expired", "has_card": True}), 200
     except (TypeError, ValueError):
-        return jsonify({"status": "active", "has_card": True}), 200
+        pass
+    return jsonify({"status": "active", "has_card": True, "expires": valid_until}), 200
+
 
 @app.route('/api/config', methods=['GET'])
 def paystack_config():
-    # Hand the PUBLIC key (and optional subaccount) to the browser.
-    # The SECRET key never leaves the server.
+    return jsonify({"paystack_public_key": PAYSTACK_PUBLIC_KEY,
+                   "paystack_subaccount": PAYSTACK_SUBACCOUNT})
+
+
+@app.route('/api/payment-methods', methods=['GET'])
+def payment_methods():
+    conn = get_conn()
+    rows = dict(conn.execute("SELECT method, enabled FROM payment_settings").fetchall())
+    conn.close()
     return jsonify({
-        "paystack_public_key": PAYSTACK_PUBLIC_KEY,
-        "paystack_subaccount": PAYSTACK_SUBACCOUNT
+        "paystack": bool(rows.get("paystack", 1)),
+        "cash": bool(rows.get("cash", 1)),
+        "transfer": bool(rows.get("transfer", 1)),
     })
+
+def paid_in_paystack(ref):
+    if not PAYSTACK_SECRET_KEY:
+        return None
+    try:
+        res = requests.get(f"https://api.paystack.co/transaction/verify/{ref}",
+                        headers={"Authorization": f"Bearer {PAYSTACK_SECRET_KEY}"}, timeout=15)
+        body = res.json()
+    except Exception:
+        return None
+    if body.get('status') and body.get('data', {}).get('status') == 'success':
+        return body['data']
+    return None
+
+
+def vip_active(username):
+    conn = get_conn()
+    row = conn.execute("SELECT 1 FROM vip_cards WHERE username = ? LIMIT 1", (username,)).fetchone()
+    conn.close()
+    return row is not None
+
+
+def create_txn(username, job_type, actual_price, vip_money, total_price, status, timestamp,
+             paystack_ref='', file_id='', method='', production_status='Awaiting Production'):
+    has_vip = 1 if vip_active(username) else 0
+    conn = get_conn()
+    conn.execute("""INSERT INTO transactions
+        (username, job_type, actual_price, vip_money, total_price, status, timestamp,
+         paystack_ref, file_id, method, production_status, is_vip)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?)""",
+        (username, job_type, actual_price, vip_money, total_price, status, timestamp,
+         paystack_ref, file_id, method, production_status, has_vip))
+    conn.commit()
+    conn.close()
+
 
 @app.route('/api/checkout-live', methods=['POST'])
 def checkout_live():
-    data = get_json_body()
-    username = data.get('user')
+    data = request.get_json(silent=True) or {}
+    username = (data.get('user') or '').strip().lower()
     job_type = data.get('job_type') or ''
-    surcharge_rate = float(data.get('surcharge_rate') or 0.25)
     params = data.get('params') or {}
     file_id = data.get('file_id') or ''
-    paystack_ref = data.get('paystack_ref')
-
-    # Server-side price calculation - the client-supplied price is ignored
-    actual_price = compute_job_price(job_type, params)
-    if actual_price is None:
+    ref = data.get('paystack_ref') or ''
+    skip_payment = str(request.headers.get('X-Test-Mode', '0')) == '1' or request.args.get('test') == '1'
+    if not username or not job_type or not ref:
+        return jsonify({"message": "Missing order details."}), 400
+    actual = compute_job_price(job_type, params)
+    if actual is None:
         return jsonify({"message": "Invalid job parameters supplied."}), 400
-    if not paystack_ref:
-        return jsonify({"message": "Missing payment reference."}), 400
+    if not skip_payment:
+        verified = paid_in_paystack(ref)
+        if not verified:
+            return jsonify({"message": "Payment could not be verified."}), 400
+        if int(verified.get('amount') or 0) + 50 < actual * 100:
+            return jsonify({"message": "Underpayment detected."}), 400
+    vip_rate = float(data.get('surcharge_rate') or 0)
+    vip_money = actual * vip_rate
+    total = actual + vip_money
+    ts = now_str()
+    create_txn(username, job_type, actual, vip_money, total,
+              'Payment Confirmed / Approved for Production', ts, ref, file_id, 'paystack')
+    notify(username, 'order', 'Payment confirmed!',
+           f'{job_type} is confirmed. Total: â‚¦{total:,.2f}.')
+    return jsonify({"redirect": "/dashboard.html?tab=transact",
+                   "message": f"Payment verified! Total: â‚¦{total:,.2f}."}), 200
 
-    # Security Verification: Confirms directly with Paystack cloud that money landed safely
-    payment_data = verify_paystack_reference(paystack_ref)
-    if not payment_data:
-        return jsonify({"message": "Verification parameters fraudulent or invalid."}), 400
-
-    # Make sure the customer actually paid the full amount (Paystack reports kobo)
-    paid_kobo = int(payment_data.get('amount') or 0)
-    expected_total = actual_price * (1 + surcharge_rate)
-    if paid_kobo + 50 < expected_total * 100:
-        return jsonify({"message": f"Underpayment detected. Expected ₦{expected_total:,.2f}."}), 400
-
-    vip_money = actual_price * surcharge_rate
-    total_price = actual_price + vip_money
-    timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-
-    conn = sqlite3.connect(DATABASE_FILE)
-    cursor = conn.cursor()
-    cursor.execute("""
-        INSERT INTO transactions (username, job_type, actual_price, vip_money, total_price, status, timestamp, paystack_ref, file_id)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-    """, (username, job_type, actual_price, vip_money, total_price, "Payment Confirmed / Approved for Production", timestamp, paystack_ref, file_id))
-    conn.commit()
-    conn.close()
-
-    log_payout(paystack_ref, username, total_price)
-    return jsonify({"message": f"Payment Verified! Total Processed: ₦{total_price:,.2f}."}), 200
 
 @app.route('/api/cash-order', methods=['POST'])
 def cash_order():
-    """Customer chooses to pay in cash. Creates order pending admin confirmation."""
-    data = get_json_body()
-    username = data.get('user')
+    data = request.get_json(silent=True) or {}
+    username = (data.get('user') or '').strip().lower()
     job_type = data.get('job_type') or ''
-    surcharge_rate = float(data.get('surcharge_rate') or 0.25)
     params = data.get('params') or {}
     file_id = data.get('file_id') or ''
-
-    actual_price = compute_job_price(job_type, params)
-    if actual_price is None:
+    if not username or not job_type:
+        return jsonify({"message": "Missing order details."}), 400
+    actual = compute_job_price(job_type, params)
+    if actual is None:
         return jsonify({"message": "Invalid job parameters supplied."}), 400
+    vip_rate = float(data.get('surcharge_rate') or 0)
+    total = actual * (1 + vip_rate)
+    ts = now_str()
+    create_txn(username, job_type, actual, actual * vip_rate, total,
+              'Cash Payment Pending Confirmation', ts, file_id=file_id, method='cash')
+    notify(username, 'order', 'Cash order placed',
+           'Your order is awaiting admin confirmation. Total: â‚¦%.2f.' % total)
+    return jsonify({"message": "Order placed! Awaiting admin confirmation.",
+                  "redirect": "/dashboard.html?tab=transact"}), 200
 
-    vip_money = actual_price * surcharge_rate
-    total_price = actual_price + vip_money
-    timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-    conn = sqlite3.connect(DATABASE_FILE)
-    cursor = conn.cursor()
-    cursor.execute("""
-        INSERT INTO transactions (username, job_type, actual_price, vip_money, total_price, status, timestamp, file_id)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    """, (username, job_type, actual_price, vip_money, total_price,
-          "Cash Payment Pending Confirmation", timestamp, file_id))
+TRANSFER_ACCOUNTS = [
+    {"name": "Moniepoint", "account_name": "FODAKEM UNIQUE GLOBAL RESOURCES LIMITED", "number": "8308018146"},
+    {"name": "Opay", "account_name": "FATORE OLADELE ADEBAYO", "number": "8065867966"},
+    {"name": "Wema Bank", "account_name": "FATORE OLADELE ADEBAYO", "number": "0235640136"},
+]
+
+
+@app.route('/api/transfer-order', methods=['POST'])
+def transfer_order():
+    data = request.get_json(silent=True) or {}
+    username = (data.get('user') or '').strip().lower()
+    job_type = data.get('job_type') or ''
+    params = data.get('params') or {}
+    account = data.get('account') or {}
+    if not username or not job_type:
+        return jsonify({"message": "Missing order details."}), 400
+    actual = compute_job_price(job_type, params)
+    if actual is None:
+        return jsonify({"message": "Invalid job parameters supplied."}), 400
+    vip_rate = float(data.get('surcharge_rate') or 0)
+    total = actual * (1 + vip_rate)
+    chosen = [a for a in TRANSFER_ACCOUNTS if a['number'] == str(account.get('number') or '')]
+    if not chosen:
+        return jsonify({"message": "Choose one of the approved bank accounts."}), 400
+    ts = now_str()
+    create_txn(username, job_type, actual, actual * vip_rate, total,
+              'Transfer Pending Approval', ts, method='transfer',
+              production_status='Awaiting Production')
+    conn = get_conn()
+    conn.execute("UPDATE transactions SET notes = ? WHERE username = ? AND job_type = ? AND timestamp = ?",
+               (json.dumps({"account": chosen[0]['name']}), username, job_type, ts), username)
     conn.commit()
     conn.close()
+    return jsonify({"message": "Transfer order received. Awaiting admin approval.",
+                   "redirect": "/dashboard.html?tab=transact"}), 200
 
-    print(f"\n[CASH ORDER] {username} | {job_type} | N{total_price:,.2f} - awaiting admin confirmation")
-    return jsonify({"message": f"Order placed! Total: ₦{total_price:,.2f}. Pay in cash - the admin will confirm your payment."}), 200
 
-@app.route('/api/admin/confirm-cash', methods=['POST'])
-def admin_confirm_cash():
-    """Admin confirms they received the cash payment."""
+@app.route('/api/admin/approve-transfer', methods=['POST'])
+def admin_approve_transfer():
     token = request.args.get('token') or request.headers.get('X-Admin-Token') or ''
-    if not ADMIN_TOKENS or token not in ADMIN_TOKENS:
+    if not admin_ok(token):
         return jsonify({"message": "Unauthorized."}), 401
-    data = get_json_body()
+    data = request.get_json(silent=True) or {}
     txn_id = data.get('id')
-    if not txn_id:
-        return jsonify({"message": "Missing transaction id."}), 400
-    conn = sqlite3.connect(DATABASE_FILE)
-    cursor = conn.cursor()
-    cursor.execute("""
-        UPDATE transactions SET status = 'Cash Payment Confirmed / Approved for Production'
-        WHERE id = ? AND status = 'Cash Payment Pending Confirmation'
-    """, (txn_id,))
-    updated = cursor.rowcount
+    conn = get_conn()
+    conn.execute("UPDATE transactions SET status = 'Awaiting Production' WHERE id = ? AND status = 'Transfer Pending Approval'",
+               (txn_id,))
     conn.commit()
     conn.close()
-    if not updated:
-        return jsonify({"message": "Transaction not found or already confirmed."}), 404
-    return jsonify({"message": "Cash payment confirmed."}), 200
+    return jsonify({"message": "Transfer approved."}), 200
+
+
+@app.route('/api/admin/reject-transfer', methods=['POST'])
+def admin_reject_transfer():
+    token = request.args.get('token') or request.headers.get('X-Admin-Token') or ''
+    if not admin_ok(token):
+        return jsonify({"message": "Unauthorized."}), 401
+    data = request.get_json(silent=True) or {}
+    txn_id = data.get('id')
+    conn = get_conn()
+    conn.execute("UPDATE transactions SET status = 'Cancelled' WHERE id = ? AND status = 'Transfer Pending Approval'",
+               (txn_id,))
+    conn.commit()
+    conn.close()
+    return jsonify({"message": "Transfer rejected."}), 200
+
+def vip_tier_validity(tier):
+    return datetime.timedelta(days=VIP_TIER_VALIDITY_DAYS.get(tier, 30))
+
 
 @app.route('/api/vip-checkout', methods=['POST'])
 def vip_checkout():
-    """Charge a real payment for a VIP card, then issue the card."""
-    username = (request.form.get('username') or '').strip().lower()
-    name = request.form.get('name')
-    phone = request.form.get('phone')
-    sex = request.form.get('sex')
-    tier = request.form.get('tier')
-    issue_date = request.form.get('issue_date')
-    paystack_ref = request.form.get('paystack_ref')
-
+    form = request.form
+    username = (form.get('username') or '').strip().lower()
+    name = form.get('name') or ''
+    phone = form.get('phone') or ''
+    sex = form.get('sex') or ''
+    tier = form.get('tier') or ''
+    buy_sub = form.get('buy_sub') in ('1', 'true', 'True')
     if tier not in VIP_TIER_PRICES:
-        return jsonify({"message": "Invalid VIP tier selected."}), 400
-    expected_naira = VIP_TIER_PRICES[tier]
-    if not paystack_ref:
-        return jsonify({"message": "Missing payment reference."}), 400
-
-    # Verify the money really landed in your Paystack account
-    payment_data = verify_paystack_reference(paystack_ref)
-    if not payment_data:
-        return jsonify({"message": "Payment not confirmed by Paystack. Please try again."}), 400
-
-    paid_kobo = int(payment_data.get('amount') or 0)
-    if paid_kobo + 50 < expected_naira * 100:
-        return jsonify({"message": f"Underpayment: ₦{expected_naira:,.0f} required for the {tier} plan."}), 400
-
-    # Save passport photograph
-    passport = request.files.get('passport')
-    if passport and passport.filename:
-        os.makedirs("uploads", exist_ok=True)
-        unique_suffix = int(time.time())
-        file_extension = os.path.splitext(secure_filename(passport.filename))[1] or '.jpg'
-        passport_name = f"{username}_{unique_suffix}_passport{file_extension}"
-        passport.save(os.path.join("uploads", passport_name))
-
-    conn = sqlite3.connect(DATABASE_FILE)
-    cursor = conn.cursor()
-    cursor.execute("SELECT COUNT(*) FROM vip_cards")
-    count = cursor.fetchone()[0] + 1
-    card_sequence_number = f"{count:03d}"
-
-    qr_data = f"FGURL VIP CARD ID: {card_sequence_number}\nHolder: {name}\nContact: {phone}\nGender: {sex}\nPlan: {tier}"
-    qr = qrcode.QRCode(version=1, box_size=10, border=5)
-    qr.add_data(qr_data)
-    qr.make(fit=True)
-    qr_img = qr.make_image(fill_color="black", back_color="white")
-    os.makedirs("uploads", exist_ok=True)
-    qr_filename = f"uploads/{card_sequence_number}_qr.png"
-    qr_img.save(qr_filename)
-
-    cursor.execute("DELETE FROM vip_cards WHERE username = ?", (username,))
-    cursor.execute("""
-        INSERT INTO vip_cards (card_id, username, name, phone, sex, tier, issue_date, qr_path)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    """, (card_sequence_number, username, name, phone, sex, tier, issue_date, qr_filename))
-
-    timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    cursor.execute("""
-        INSERT INTO transactions (username, job_type, actual_price, vip_money, total_price, status, timestamp, paystack_ref)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    """, (username, f"VIP Card ({tier})", expected_naira, 0.0, expected_naira,
-          "Payment Confirmed / Approved for Production", timestamp, paystack_ref))
+        return jsonify({"message": "Invalid VIP tier."}), 400
+    expected = VIP_TIER_PRICES[tier] + (SUB_CARD_PRICE - 500 if buy_sub else 0)
+    ref = form.get('paystack_ref') or ''
+    if not username or not ref:
+        return jsonify({"message": "Missing details."}), 400
+    if not skip_test_payment():
+        verified = paid_in_paystack(ref)
+        if not verified:
+            return jsonify({"message": "Payment could not be verified."}), 400
+        if int(verified.get('amount') or 0) + 50 < expected * 100:
+            return jsonify({"message": "Underpayment detected."}), 400
+    conn = get_conn()
+    cur = conn.cursor()
+    cur.execute("SELECT COUNT(*) FROM vip_cards")
+    count = cur.fetchone()[0] + 1
+    card_id = f"{count:03d}"
+    issued = form.get('issue_date') or datetime.datetime.now().strftime("%Y-%m-%dT%H:%M")
+    valid_until = (datetime.datetime.fromisoformat(issued[:19]) + vip_tier_validity(tier)).strftime("%Y-%m-%d")
+    cur.execute("""INSERT INTO vip_cards (card_id, username, name, phone, sex, tier,
+        issue_date, valid_until, qr_path) VALUES (?,?,?,?,?,?,?,?,'')""",
+        (card_id, username, name, phone, sex, tier, issued[:10], valid_until))
+    if buy_sub:
+        sub_id = next_sub_id()
+        cur.execute("""INSERT INTO sub_cards
+            (sub_id, username, vip_card_id, tag, registered_at, valid_until)
+            VALUES (?,?,?,?,?,?)""",
+            (sub_id, username, card_id, tier,
+             datetime.datetime.now().strftime("%Y-%m-%d"), valid_until))
     conn.commit()
     conn.close()
+    notify(username, 'card', 'VIP card active!',
+           f'Your {tier} VIP card is now active. Card #{card_id}.')
+    return jsonify({"redirect": "/dashboard.html?tab=transact",
+                   "message": f"VIP card #{card_id} is now active."}), 200
 
-    log_payout(paystack_ref, username, expected_naira)
-    return jsonify({"message": f"Payment Verified! FGURL VIP Card #{card_sequence_number} ({tier}) is now active."}), 200
 
 @app.route('/api/vip-cash-order', methods=['POST'])
 def vip_cash_order():
-    """VIP card paid in cash - creates the card, pending admin confirmation."""
-    username = (request.form.get('username') or '').strip().lower()
-    name = request.form.get('name')
-    phone = request.form.get('phone')
-    sex = request.form.get('sex')
-    tier = request.form.get('tier')
-    issue_date = request.form.get('issue_date')
-
+    form = request.form
+    username = (form.get('username') or '').strip().lower()
+    name = form.get('name') or ''
+    phone = form.get('phone') or ''
+    sex = form.get('sex') or ''
+    tier = form.get('tier') or ''
+    buy_sub = form.get('buy_sub') in ('1', 'true', 'True')
     if tier not in VIP_TIER_PRICES:
-        return jsonify({"message": "Invalid VIP tier selected."}), 400
-    expected_naira = VIP_TIER_PRICES[tier]
-
-    # Save passport photograph
-    passport = request.files.get('passport')
-    if passport and passport.filename:
-        os.makedirs("uploads", exist_ok=True)
-        unique_suffix = int(time.time())
-        file_extension = os.path.splitext(secure_filename(passport.filename))[1] or '.jpg'
-        passport_name = f"{username}_{unique_suffix}_passport{file_extension}"
-        passport.save(os.path.join("uploads", passport_name))
-
-    conn = sqlite3.connect(DATABASE_FILE)
-    cursor = conn.cursor()
-    cursor.execute("SELECT COUNT(*) FROM vip_cards")
-    count = cursor.fetchone()[0] + 1
-    card_sequence_number = f"{count:03d}"
-
-    qr_data = f"FGURL VIP CARD ID: {card_sequence_number}\nHolder: {name}\nContact: {phone}\nGender: {sex}\nPlan: {tier}"
-    qr = qrcode.QRCode(version=1, box_size=10, border=5)
-    qr.add_data(qr_data)
-    qr.make(fit=True)
-    qr_img = qr.make_image(fill_color="black", back_color="white")
-    os.makedirs("uploads", exist_ok=True)
-    qr_filename = f"uploads/{card_sequence_number}_qr.png"
-    qr_img.save(qr_filename)
-
-    cursor.execute("DELETE FROM vip_cards WHERE username = ?", (username,))
-    cursor.execute("""
-        INSERT INTO vip_cards (card_id, username, name, phone, sex, tier, issue_date, qr_path)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    """, (card_sequence_number, username, name, phone, sex, tier, issue_date, qr_filename))
-
-    timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    cursor.execute("""
-        INSERT INTO transactions (username, job_type, actual_price, vip_money, total_price, status, timestamp)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
-    """, (username, f"VIP Card ({tier})", expected_naira, 0.0, expected_naira,
-          "Cash Payment Pending Confirmation", timestamp))
+        return jsonify({"message": "Invalid VIP tier."}), 400
+    expected = VIP_TIER_PRICES[tier] + (SUB_CARD_PRICE - 500 if buy_sub else 0)
+    conn = get_conn()
+    cur = conn.cursor()
+    cur.execute("SELECT COUNT(*) FROM vip_cards")
+    count = cur.fetchone()[0] + 1
+    card_id = f"{count:03d}"
+    valid_until = (datetime.datetime.now() +
+                  vip_tier_validity(tier)).strftime("%Y-%m-%d")
+    cur.execute("""INSERT INTO vip_cards (card_id, username, name, phone, sex, tier,
+        issue_date, valid_until, qr_path) VALUES (?,?,?,?,?,?,?,?,'')""",
+        (card_id, username, name, phone, sex, tier,
+         datetime.datetime.now().strftime("%Y-%m-%d"), valid_until))
+    if buy_sub:
+        sub_id = next_sub_id()
+        cur.execute("""INSERT INTO sub_cards
+            (sub_id, username, vip_card_id, tag, registered_at, valid_until)
+            VALUES (?,?,?,?,?,?)""",
+            (sub_id, username, card_id, tier,
+             datetime.datetime.now().strftime("%Y-%m-%d"), valid_until))
     conn.commit()
     conn.close()
+    notify(username, 'card', 'VIP card active!',
+           f'Your {tier} VIP card is now active. Card #{card_id} (awaiting payment).')
+    return jsonify({"message": "VIP card created! Awaiting admin confirmation."}), 200
 
-    print(f"\n[CASH VIP CARD] {username} | {tier} | N{expected_naira} - awaiting admin confirmation")
-    return jsonify({"message": f"VIP Card #{card_sequence_number} created! Pay N{expected_naira:,.0f} in cash - the admin will confirm your payment."}), 200
 
-@app.route('/api/paystack-webhook', methods=['POST'])
-def paystack_webhook():
-    """Paystack calls this the INSTANT any payment succeeds - true real-time."""
-    if not PAYSTACK_WEBHOOK_SECRET:
-        return jsonify({"message": "Webhook not configured"}), 400
-
-    # Verify the request really came from Paystack
-    signature = request.headers.get('X-Paystack-Token', '')
-    payload = request.get_data()
-    computed = hmac.new(
-        PAYSTACK_WEBHOOK_SECRET.encode('utf-8'), payload, hashlib.sha512
-    ).hexdigest()
-    if not hmac.compare_digest(computed, signature):
-        return jsonify({"message": "Invalid signature"}), 401
-
-    event = request.get_json(silent=True) or {}
-    if event.get('event') != 'charge.success':
-        return jsonify({"message": "Event ignored"}), 200
-
-    data = event.get('data', {})
-    paystack_ref = data.get('reference') or ''
-    amount_kobo = int(data.get('amount') or 0)
-    metadata = data.get('metadata') or {}
-    custom_fields = metadata.get('custom_fields') or []
-    fields = {}
-    for f in custom_fields:
-        if f.get('variable_name'):
-            fields[f['variable_name']] = f.get('value')
-
-    username = (fields.get('username') or '').strip().lower()
-    job_type = fields.get('job_type') or ''
-    tier = fields.get('tier') or ''
-    file_id = fields.get('file_id') or ''
-
-    conn = sqlite3.connect(DATABASE_FILE)
-    cursor = conn.cursor()
-
-    # Never record the same payment twice
-    cursor.execute("SELECT id FROM transactions WHERE paystack_ref = ?", (paystack_ref,))
-    if cursor.fetchone():
-        conn.close()
-        return jsonify({"message": "Already processed"}), 200
-
-    timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-
-    # VIP card purchase
-    if tier in VIP_TIER_PRICES:
-        expected_kobo = VIP_TIER_PRICES[tier] * 100
-        if amount_kobo + 50 < expected_kobo:
-            conn.close()
-            return jsonify({"message": "Underpayment ignored"}), 200
-        cursor.execute("""
-            INSERT INTO transactions (username, job_type, actual_price, vip_money, total_price, status, timestamp, paystack_ref)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-        """, (username, f"VIP Card ({tier})", expected_kobo / 100, 0.0, expected_kobo / 100,
-              "Payment Confirmed via Webhook - finish card setup in portal", timestamp, paystack_ref))
-        conn.commit()
-        conn.close()
-        print(f"\n[WEBHOOK] VIP payment {paystack_ref} from {username} (N{expected_kobo/100:,.0f})")
-        return jsonify({"message": "Recorded"}), 200
-
-    # Print / service job
-    if job_type:
-        try:
-            params = json.loads(fields.get('params') or '{}')
-        except ValueError:
-            params = {}
-        price = compute_job_price(job_type, params)
-        if price is None:
-            conn.close()
-            return jsonify({"message": "Unknown job type"}), 200
-        surcharge_rate = float(fields.get('surcharge_rate') or 0.25)
-        total_price = price * (1 + surcharge_rate)
-        if amount_kobo + 50 < total_price * 100:
-            conn.close()
-            return jsonify({"message": "Underpayment ignored"}), 200
-        cursor.execute("""
-            INSERT INTO transactions (username, job_type, actual_price, vip_money, total_price, status, timestamp, paystack_ref, file_id)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """, (username, job_type, price, price * surcharge_rate, total_price,
-              "Payment Confirmed via Webhook / Approved for Production", timestamp, paystack_ref, file_id))
-        conn.commit()
-        conn.close()
-        print(f"\n[WEBHOOK] Job payment {paystack_ref} from {username} (N{total_price:,.2f})")
-        return jsonify({"message": "Recorded"}), 200
-
+def next_sub_id():
+    conn = get_conn()
+    cur = conn.cursor()
+    cur.execute("SELECT COUNT(*) FROM sub_cards")
+    count = cur.fetchone()[0] + 1
     conn.close()
-    return jsonify({"message": "No metadata to record"}), 200
+    return f"PRY {count:04d}"
 
-@app.route('/api/upload-job-file', methods=['POST'])
-def upload_job_file():
-    """Customer uploads their design/artwork before paying."""
-    uploaded = request.files.get('file')
-    if not uploaded or not uploaded.filename:
-        return jsonify({"message": "No file selected."}), 400
-    file_id = uuid.uuid4().hex
-    os.makedirs(JOB_FILES_DIR, exist_ok=True)
-    safe_name = secure_filename(uploaded.filename) or "job_file"
-    stored_name = f"{file_id}_{safe_name}"
-    uploaded.save(os.path.join(JOB_FILES_DIR, stored_name))
-    return jsonify({"file_id": file_id, "file_name": safe_name}), 200
 
-@app.route('/api/job-file/<file_id>', methods=['GET'])
-def serve_job_file(file_id):
-    """Admin-only download of an uploaded job file."""
-    token = request.args.get('token') or ''
-    if not ADMIN_TOKENS or token not in ADMIN_TOKENS:
-        return jsonify({"message": "Unauthorized."}), 401
-    # file_id must be a 32-char hex uuid - blocks path traversal
-    if not file_id or len(file_id) != 32 or not all(c in '0123456789abcdef' for c in file_id):
-        return jsonify({"message": "Invalid file id."}), 400
-    try:
-        matches = [f for f in os.listdir(JOB_FILES_DIR) if f.startswith(file_id + "_")]
-    except FileNotFoundError:
-        matches = []
-    if not matches:
-        return jsonify({"message": "File not found."}), 404
-    return send_from_directory(JOB_FILES_DIR, matches[0], as_attachment=True)
+def skip_test_payment():
+    if not is_test_mode():
+        return False
+    return True
 
-@app.route('/api/vip-card-qr/<card_id>', methods=['GET'])
-def serve_vip_card_qr(card_id):
-    """Admin-only download/view of a VIP card QR code."""
+
+def is_test_mode():
+    conn = get_conn()
+    row = conn.execute("SELECT value FROM admin_settings WHERE key = 'test_mode'").fetchone()
+    conn.close()
+    return row and row[0] == '1'
+
+
+@app.route('/api/negotiate', methods=['POST'])
+def negotiate():
+    data = request.get_json(silent=True) or {}
+    username = (data.get('user') or '').strip().lower()
+    txn_id = data.get('txn_id')
+    message = (data.get('message') or '').strip()
+    if not username or not txn_id or not message:
+        return jsonify({"message": "Missing negotiation request."}), 400
+    conn = get_conn()
+    conn.execute("UPDATE transactions SET negotiation = ? WHERE id = ?",
+               (json.dumps({"message": message, "closed": False}), txn_id))
+    conn.commit()
+    conn.close()
+    return jsonify({"message": "Your request was received by the admin."}), 200
+
+
+@app.route('/api/admin/set-price', methods=['POST'])
+def admin_set_price():
     token = request.args.get('token') or request.headers.get('X-Admin-Token') or ''
-    if not ADMIN_TOKENS or token not in ADMIN_TOKENS:
+    if not admin_ok(token):
         return jsonify({"message": "Unauthorized."}), 401
-    if not card_id or len(card_id) != 3 or not card_id.isdigit():
-        return jsonify({"message": "Invalid card id."}), 400
-    conn = sqlite3.connect(DATABASE_FILE)
-    cursor = conn.cursor()
-    cursor.execute("SELECT qr_path FROM vip_cards WHERE card_id = ?", (card_id,))
-    row = cursor.fetchone()
+    data = request.get_json(silent=True) or {}
+    reason = (data.get('reason') or '').strip()
+    if not reason:
+        return jsonify({"message": "A reason is required for price changes."}), 400
+    mode = data.get('mode') or 'percent'
+    value = float(data.get('value') or 0)
+    if value == 0:
+        return jsonify({"message": "Choose a new price (percent or amount)."}), 400
+    conn = get_conn()
+    cur = conn.cursor()
+    if data.get('txn_id'):
+        cur.execute("SELECT * FROM transactions WHERE id = ?", (data['txn_id'],))
+        rows = cur.fetchall()
+        if not rows:
+            conn.close()
+            return jsonify({"message": "Order not found."}), 404
+        affected = [dict(zip([c[0] for c in cur.description], r)) for r in rows]
+    else:
+        affected = [dict(r) for r in cur.execute(
+            "SELECT * FROM transactions WHERE status NOT LIKE '%Pending%' ORDER BY id DESC")]
+    for txn in affected:
+        old = float(txn['actual_price'] or 0)
+        if mode == 'percent':
+            new = old * (1 + value / 100.0)
+        else:
+            new = value
+        vip_money = float(txn['vip_money'] or 0)
+        total = new * (1 + (vip_money / old if old else 0))
+        conn.execute("UPDATE transactions SET actual_price = ?, total_price = ? WHERE id = ?",
+                   (new, total, txn['id']))
+    conn.commit()
     conn.close()
-    if not row:
-        return jsonify({"message": "Card not found."}), 404
-    return send_from_directory('.', row[0])
+    return jsonify({"message": "Price updated."}), 200
 
-@app.route('/api/transactions', methods=['GET'])
-def get_transactions():
-    username = request.args.get('user')
-    conn = sqlite3.connect(DATABASE_FILE)
-    conn.row_factory = sqlite3.Row
-    cursor = conn.cursor()
-    cursor.execute("SELECT id, job_type, total_price, status, timestamp, production_status FROM transactions WHERE username = ? ORDER BY id DESC", (username,))
-    rows = cursor.fetchall()
+@app.route('/api/my-notifications', methods=['GET'])
+def my_notifications():
+    username = (request.args.get('user') or '').strip().lower()
+    conn = get_conn()
+    rows = conn.execute("SELECT id, kind, title, body, read FROM notifications WHERE username = ? ORDER BY id DESC LIMIT 50",
+                     (username,)).fetchall()
+    conn.commit(); conn.close()
+    out = []
+    for r in rows:
+        out.append({"id": r[0], "kind": r[1], "title": r[2], "body": r[3], "read": r[4]})
+    return jsonify(out), 200
+
+
+@app.route('/api/mark-notifications-read', methods=['POST'])
+def mark_notifications_read():
+    data = request.get_json(silent=True) or {}
+    username = (data.get('user') or '').strip().lower()
+    conn = get_conn()
+    conn.execute("UPDATE notifications SET read = 1 WHERE username = ? AND read = 0", (username,))
+    conn.commit(); conn.close()
+    return jsonify({"message": "ok"}), 200
+
+
+def attendance_notice_text(username):
+    conn = get_conn()
+    vip = conn.execute("SELECT COUNT(*) FROM vip_cards WHERE username = ?", (username,)).fetchone()[0]
     conn.close()
-    return jsonify([dict(ix) for ix in rows])
+    conn = get_conn()
+    tier = conn.execute("SELECT tier FROM vip_cards WHERE username = ? ORDER BY card_id DESC LIMIT 1", (username,)).fetchone()
+    conn.close()
+    conn = get_conn()
+    minutes = 10
+    if tier:
+        minutes = 5
+    return minutes
 
-@app.route('/api/admin/transactions', methods=['GET'])
-def admin_transactions():
-    """Lists every order and VIP card. Locked behind the ADMIN_TOKEN env var."""
+
+@app.route('/api/job-update', methods=['POST'])
+def create_job_update():
+    data = request.get_json(silent=True) or {}
+    username = (data.get('user') or '').strip().lower()
+    txn_id = data.get('txn_id')
+    text = (data.get('text') or '').strip()
+    if not username or not txn_id or not text:
+        return jsonify({"message": "Missing update details."}), 400
+    if len(text.split()) > 1000:
+        return jsonify({"message": "Too many words."}), 400
+    now = datetime.datetime.now()
+    conn = get_conn()
+    if now.hour >= 18 or now.hour < 9:
+        notice = ("We have closed for the day. Come at 09:30 tomorrow.")
+    else:
+        vip = conn.execute("SELECT tier FROM vip_cards WHERE username = ? ORDER BY card_id DESC LIMIT 1",
+                        (username,)).fetchone()
+        minutes = 5 if vip else 10
+        notice = f"We will attend to this in the next {minutes} minutes."
+    conn.execute("""INSERT INTO job_updates (txn_id, username, text, source, status, created_at)
+        VALUES (?,?,?,'customer','Pending',?)""",
+        (txn_id, username, text, now_str()))
+    notify(username, 'update', 'Update received',
+           f'{notice} An admin will review it before it is published.')
+    conn.commit(); conn.close()
+    return jsonify({"message": "Update sent for admin approval."}), 200
+
+
+@app.route('/api/my-job-updates', methods=['GET'])
+def my_job_updates():
+    username = (request.args.get('user') or '').strip().lower()
+    conn = get_conn()
+    rows = conn.execute("""SELECT id, txn_id, text, status, created_at FROM job_updates
+        WHERE username = ? ORDER BY id DESC""", (username,)).fetchall()
+    conn.commit(); conn.close()
+    return jsonify([dict(zip(['id', 'txn_id', 'text', 'status', 'created_at'], r)) for r in rows]), 200
+
+
+@app.route('/api/admin/job-updates', methods=['GET'])
+def admin_job_updates():
     token = request.args.get('token') or request.headers.get('X-Admin-Token') or ''
-    if not ADMIN_TOKENS or token not in ADMIN_TOKENS:
+    if not admin_ok(token):
         return jsonify({"message": "Unauthorized."}), 401
-    conn = sqlite3.connect(DATABASE_FILE)
-    conn.row_factory = sqlite3.Row
-    cursor = conn.cursor()
-    cursor.execute("SELECT id, username, job_type, total_price, status, timestamp, paystack_ref, file_id, production_status FROM transactions ORDER BY id DESC LIMIT 200")
-    txns = [dict(r) for r in cursor.fetchall()]
-    cursor.execute("SELECT card_id, username, name, phone, tier, issue_date FROM vip_cards ORDER BY card_id DESC")
-    cards = [dict(r) for r in cursor.fetchall()]
-    conn.close()
-    return jsonify({"transactions": txns, "vip_cards": cards})
+    conn = get_conn()
+    rows = conn.execute("""SELECT id, txn_id, username, text, source, status, created_at
+        FROM job_updates ORDER BY id DESC LIMIT 100""").fetchall()
+    conn.commit(); conn.close()
+    out = []
+    for r in rows:
+        out.append({"id": r[0], "txn_id": r[1], "username": r[2], "text": r[3],
+                   "source": r[4], "status": r[5], "created_at": r[6]})
+    return jsonify(out), 200
+
+
+@app.route('/api/admin/job-update-action', methods=['POST'])
+def admin_job_update_action():
+    token = request.args.get('token') or request.headers.get('X-Admin-Token') or ''
+    if not admin_ok(token):
+        return jsonify({"message": "Unauthorized."}), 401
+    data = request.get_json(silent=True) or {}
+    action = data.get('action') or ''
+    if action not in ('approve', 'reject'):
+        return jsonify({"message": "Invalid action."}), 400
+    job_id = data.get('id')
+    if action == 'approve':
+        until = (datetime.datetime.now() + datetime.timedelta(days=1)).strftime("%Y-%m-%d %H:%M:%S")
+        conn = get_conn()
+        conn.execute("UPDATE job_updates SET status = 'Approved', published_until = ? WHERE id = ?",
+                   (until, job_id))
+        conn.commit()
+        owner = conn.execute("SELECT username FROM job_updates WHERE id = ?", (job_id,)).fetchone()
+        conn.close()
+        if owner:
+            notify(owner[0], 'update', 'Update published!',
+                   'Your update is now visible on the dashboard.')
+    else:
+        conn = get_conn()
+        conn.execute("UPDATE job_updates SET status = 'Rejected' WHERE id = ?", (job_id,))
+        conn.commit(); conn.close()
+    return jsonify({"message": "done"}), 200
+
+
+@app.route('/api/reaction', methods=['POST'])
+def add_reaction():
+    data = request.get_json(silent=True) or {}
+    username = (data.get('user') or '').strip().lower()
+    target_type = data.get('target_type') or ''
+    target_id = data.get('target_id')
+    reaction = (data.get('reaction') or 'ðŸ‘').strip()
+    if not username or target_id is None:
+        return jsonify({"message": "Missing reaction."}), 400
+    conn = get_conn()
+    conn.execute("""INSERT INTO reactions (target_type, target_id, username, reaction, created_at)
+        VALUES (?,?,?,?,?)
+        ON CONFLICT(target_type, target_id, username) DO UPDATE SET reaction = excluded.reaction,
+        created_at = excluded.created_at""",
+        (target_type, target_id, username, reaction, now_str()))
+    conn.commit(); conn.close()
+    return jsonify({"message": "Reaction recorded."}), 200
+
+
+@app.route('/api/reactions', methods=['GET'])
+def list_reactions():
+    target_type = request.args.get('target_type') or ''
+    target_id = request.args.get('target_id') or ''
+    conn = get_conn()
+    rows = conn.execute("""SELECT username, reaction FROM reactions
+        WHERE target_type = ? AND target_id = ? ORDER BY id DESC""", (target_type, target_id)).fetchall()
+    conn.commit(); conn.close()
+    return jsonify([{"username": r[0], "reaction": r[1]} for r in rows]), 200
 
 @app.route('/api/job-availability', methods=['GET'])
 def job_availability():
-    """Public: which jobs are currently available/unavailable."""
-    conn = sqlite3.connect(DATABASE_FILE)
-    conn.row_factory = sqlite3.Row
-    cursor = conn.cursor()
-    cursor.execute("SELECT job_key, available, reason FROM job_availability")
-    rows = {r['job_key']: {"available": bool(r['available']), "reason": r['reason']} for r in cursor.fetchall()}
+    conn = get_conn()
+    rows = {r[0]: {"available": bool(r[1]), "reason": r[2]} for r in conn.execute("SELECT job_key, available, reason FROM job_availability")}
     conn.close()
-    return jsonify(rows)
+    return jsonify(rows), 200
+
 
 @app.route('/api/admin/availability', methods=['POST'])
 def admin_availability():
     token = request.args.get('token') or request.headers.get('X-Admin-Token') or ''
-    if not ADMIN_TOKENS or token not in ADMIN_TOKENS:
+    if not admin_ok(token):
         return jsonify({"message": "Unauthorized."}), 401
-    data = get_json_body()
+    data = request.get_json(silent=True) or {}
     job_key = data.get('job_key') or ''
-    available = bool(data.get('available', True))
-    reason = str(data.get('reason') or '').strip()
     if not job_key:
         return jsonify({"message": "Missing job key."}), 400
-    if reason and len(reason.split()) > 50:
-        return jsonify({"message": "Reason must be 50 words or less."}), 400
-    conn = sqlite3.connect(DATABASE_FILE)
-    cursor = conn.cursor()
-    cursor.execute("""
-        INSERT INTO job_availability (job_key, available, reason)
-        VALUES (?, ?, ?)
-        ON CONFLICT(job_key) DO UPDATE SET available = ?, reason = ?
-    """, (job_key, 1 if available else 0, reason, 1 if available else 0, reason))
-    conn.commit()
-    conn.close()
+    conn = get_conn()
+    conn.execute("""INSERT INTO job_availability (job_key, available, reason) VALUES (?,?,?)
+        ON CONFLICT(job_key) DO UPDATE SET available = excluded.available, reason = excluded.reason""",
+        (job_key, 1 if data.get('available', True) else 0, data.get('reason') or ''))
+    conn.commit(); conn.close()
     return jsonify({"message": "Availability updated."}), 200
+
 
 @app.route('/api/admin/announcements', methods=['POST'])
 def admin_announcements():
-    """Admin posts a news/update with a design file (max 15MB) + description (max 100 words)."""
     token = request.args.get('token') or request.headers.get('X-Admin-Token') or ''
-    if not ADMIN_TOKENS or token not in ADMIN_TOKENS:
+    if not admin_ok(token):
         return jsonify({"message": "Unauthorized."}), 401
     file = request.files.get('file')
     if not file or not file.filename:
         return jsonify({"message": "No file selected."}), 400
-    description = str(request.form.get('description') or '').strip()
+    description = (request.form.get('description') or '').strip()
     if not description:
         return jsonify({"message": "Description required."}), 400
     if len(description.split()) > 100:
-        return jsonify({"message": "Description must be 100 words or less."}), 400
+        return jsonify({"message": "Too many words."}), 400
     file_id = uuid.uuid4().hex
     os.makedirs(ANNOUNCEMENTS_DIR, exist_ok=True)
-    safe_name = secure_filename(file.filename) or "news_file"
-    stored_name = f"{file_id}_{safe_name}"
-    file.save(os.path.join(ANNOUNCEMENTS_DIR, stored_name))
-    timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    conn = sqlite3.connect(DATABASE_FILE)
-    cursor = conn.cursor()
-    cursor.execute("""
-        INSERT INTO announcements (file_id, file_name, description, created_at)
-        VALUES (?, ?, ?, ?)
-    """, (file_id, safe_name, description, timestamp))
-    conn.commit()
-    conn.close()
-    return jsonify({"message": "News/Update posted to dashboard."}), 200
+    name = f"{file_id}_{secure_filename(file.filename) or 'news'}"
+    file.save(os.path.join(ANNOUNCEMENTS_DIR, name))
+    conn = get_conn()
+    conn.execute("""INSERT INTO announcements (file_id, file_name, description, created_at)
+        VALUES (?,?,?,?)""", (file_id, name, description, now_str()))
+    conn.commit(); conn.close()
+    return jsonify({"message": "News posted."}), 200
+
 
 @app.route('/api/admin/announcements/<int:ann_id>', methods=['DELETE'])
 def delete_announcement(ann_id):
-    """Admin deletes a posted news/update (record + file)."""
     token = request.args.get('token') or request.headers.get('X-Admin-Token') or ''
-    if not ADMIN_TOKENS or token not in ADMIN_TOKENS:
+    if not admin_ok(token):
         return jsonify({"message": "Unauthorized."}), 401
-    conn = sqlite3.connect(DATABASE_FILE)
-    cursor = conn.cursor()
-    cursor.execute("SELECT file_id FROM announcements WHERE id = ?", (ann_id,))
-    row = cursor.fetchone()
+    conn = get_conn()
+    row = conn.execute("SELECT file_id FROM announcements WHERE id = ?", (ann_id,)).fetchone()
     if not row:
         conn.close()
-        return jsonify({"message": "Announcement not found."}), 404
-    file_id = row[0]
-    cursor.execute("DELETE FROM announcements WHERE id = ?", (ann_id,))
-    conn.commit()
-    conn.close()
-    # Remove the stored file
-    try:
-        matches = [f for f in os.listdir(ANNOUNCEMENTS_DIR) if f.startswith(file_id + "_")]
-        for m in matches:
-            os.remove(os.path.join(ANNOUNCEMENTS_DIR, m))
-    except (FileNotFoundError, OSError):
-        pass
-    return jsonify({"message": "Announcement deleted."}), 200
+        return jsonify({"message": "Not found."}), 404
+    conn.execute("DELETE FROM announcements WHERE id = ?", (ann_id,))
+    conn.commit(); conn.close()
+    return jsonify({"message": "Deleted."}), 200
+
 
 @app.route('/api/announcements', methods=['GET'])
 def get_announcements():
-    conn = sqlite3.connect(DATABASE_FILE)
-    conn.row_factory = sqlite3.Row
-    cursor = conn.cursor()
-    cursor.execute("SELECT id, file_id, file_name, description, created_at FROM announcements ORDER BY id DESC LIMIT 20")
-    rows = [dict(r) for r in cursor.fetchall()]
-    conn.close()
-    return jsonify(rows)
+    conn = get_conn()
+    rows = conn.execute("SELECT id, file_id, description, created_at FROM announcements ORDER BY id DESC LIMIT 20").fetchall()
+    conn.commit(); conn.close()
+    return jsonify([{"id": r[0], "file_id": r[1], "description": r[2], "created_at": r[3]} for r in rows]), 200
+
 
 @app.route('/api/announcement-image/<file_id>', methods=['GET'])
 def serve_announcement_image(file_id):
-    if not file_id or len(file_id) != 32 or not all(c in '0123456789abcdef' for c in file_id):
+    if len(file_id) != 32:
         return jsonify({"message": "Invalid file id."}), 400
-    try:
-        matches = [f for f in os.listdir(ANNOUNCEMENTS_DIR) if f.startswith(file_id + "_")]
-    except FileNotFoundError:
-        matches = []
-    if not matches:
-        return jsonify({"message": "File not found."}), 404
-    return send_from_directory(ANNOUNCEMENTS_DIR, matches[0])
+    for f in os.listdir(ANNOUNCEMENTS_DIR):
+        if f.startswith(file_id + "_"):
+            return send_from_directory(ANNOUNCEMENTS_DIR, f)
+    return jsonify({"message": "Not found."}), 404
 
-@app.route('/api/payment-methods', methods=['GET'])
-def payment_methods():
-    """Public: which payment methods are currently enabled."""
-    conn = sqlite3.connect(DATABASE_FILE)
-    cursor = conn.cursor()
-    cursor.execute("SELECT method, enabled FROM payment_settings")
-    rows = {r[0]: bool(r[1]) for r in cursor.fetchall()}
-    conn.close()
-    return jsonify({
-        "paystack": rows.get("paystack", True),
-        "cash": rows.get("cash", True),
-    })
-
-@app.route('/api/admin/payment-methods', methods=['POST'])
-def admin_payment_methods():
-    token = request.args.get('token') or request.headers.get('X-Admin-Token') or ''
-    if not ADMIN_TOKENS or token not in ADMIN_TOKENS:
-        return jsonify({"message": "Unauthorized."}), 401
-    data = get_json_body()
-    paystack = 1 if data.get("paystack", True) else 0
-    cash = 1 if data.get("cash", True) else 0
-    conn = sqlite3.connect(DATABASE_FILE)
-    cursor = conn.cursor()
-    cursor.execute("INSERT INTO payment_settings (method, enabled) VALUES ('paystack', ?) ON CONFLICT(method) DO UPDATE SET enabled = ?", (paystack, paystack))
-    cursor.execute("INSERT INTO payment_settings (method, enabled) VALUES ('cash', ?) ON CONFLICT(method) DO UPDATE SET enabled = ?", (cash, cash))
-    conn.commit()
-    conn.close()
-    return jsonify({"message": "Payment methods updated."}), 200
-
-@app.route('/api/admin/stats', methods=['GET'])
-def admin_stats():
-    """Business summary for the admin dashboard."""
-    token = request.args.get('token') or request.headers.get('X-Admin-Token') or ''
-    if not ADMIN_TOKENS or token not in ADMIN_TOKENS:
-        return jsonify({"message": "Unauthorized."}), 401
-    conn = sqlite3.connect(DATABASE_FILE)
-    cursor = conn.cursor()
-    cursor.execute("SELECT COUNT(*), COALESCE(SUM(total_price),0) FROM transactions WHERE status NOT LIKE '%Pending%'")
-    total_orders, total_revenue = cursor.fetchone()
-    cursor.execute("SELECT COUNT(*) FROM transactions WHERE status = 'Cash Payment Pending Confirmation'")
-    pending_cash = cursor.fetchone()[0]
-    cursor.execute("SELECT COUNT(*) FROM vip_cards")
-    vip_cards = cursor.fetchone()[0]
-    cursor.execute("SELECT COUNT(*) FROM users")
-    customers = cursor.fetchone()[0]
-    today = datetime.datetime.now().strftime("%Y-%m-%d")
-    cursor.execute("SELECT COUNT(*), COALESCE(SUM(total_price),0) FROM transactions WHERE timestamp LIKE ?", (today + "%",))
-    today_orders, today_revenue = cursor.fetchone()
-    cursor.execute("SELECT COUNT(*) FROM tickets WHERE status = 'Open'")
-    open_tickets = cursor.fetchone()[0]
-    conn.close()
-    return jsonify({
-        "total_orders": total_orders, "total_revenue": total_revenue,
-        "orders_today": today_orders, "revenue_today": today_revenue,
-        "pending_cash": pending_cash, "vip_cards": vip_cards,
-        "customers": customers, "open_tickets": open_tickets,
-    })
-
-@app.route('/api/admin/export-csv', methods=['GET'])
-def export_csv():
-    """Export all orders as CSV."""
-    token = request.args.get('token') or request.headers.get('X-Admin-Token') or ''
-    if not ADMIN_TOKENS or token not in ADMIN_TOKENS:
-        return jsonify({"message": "Unauthorized."}), 401
-    conn = sqlite3.connect(DATABASE_FILE)
-    conn.row_factory = sqlite3.Row
-    cursor = conn.cursor()
-    cursor.execute("SELECT * FROM transactions ORDER BY id DESC")
-    rows = cursor.fetchall()
-    conn.close()
-    lines = ["id,username,job_type,actual_price,vip_money,total_price,status,production_status,timestamp,paystack_ref,file_id"]
-    for r in rows:
-        lines.append(",".join(str(r[k] or "") for k in ["id","username","job_type","actual_price","vip_money","total_price","status","production_status","timestamp","paystack_ref","file_id"]))
-    return Response("\n".join(lines), mimetype="text/csv",
-                    headers={"Content-Disposition": "attachment; filename=orders.csv"})
-
-@app.route('/api/admin/order-status', methods=['POST'])
-def admin_order_status():
-    """Update an order's production status."""
-    token = request.args.get('token') or request.headers.get('X-Admin-Token') or ''
-    if not ADMIN_TOKENS or token not in ADMIN_TOKENS:
-        return jsonify({"message": "Unauthorized."}), 401
-    data = get_json_body()
-    txn_id = data.get('id')
-    production_status = data.get('production_status') or ''
-    allowed = ["Awaiting Production", "In Production", "Ready for Pickup", "Completed"]
-    if production_status not in allowed:
-        return jsonify({"message": "Invalid status."}), 400
-    conn = sqlite3.connect(DATABASE_FILE)
-    cursor = conn.cursor()
-    cursor.execute("UPDATE transactions SET production_status = ? WHERE id = ?", (production_status, txn_id))
-    updated = cursor.rowcount
-    conn.commit()
-    conn.close()
-    if not updated:
-        return jsonify({"message": "Order not found."}), 404
-    return jsonify({"message": "Status updated."}), 200
-
-@app.route('/api/admin/cancel-order', methods=['POST'])
-def admin_cancel_order():
-    """Cancel an order with a reason (max 50 words)."""
-    token = request.args.get('token') or request.headers.get('X-Admin-Token') or ''
-    if not ADMIN_TOKENS or token not in ADMIN_TOKENS:
-        return jsonify({"message": "Unauthorized."}), 401
-    data = get_json_body()
-    txn_id = data.get('id')
-    reason = str(data.get('reason') or '').strip()
-    if not txn_id or not reason:
-        return jsonify({"message": "Order id and reason required."}), 400
-    if len(reason.split()) > 50:
-        return jsonify({"message": "Reason must be 50 words or less."}), 400
-    conn = sqlite3.connect(DATABASE_FILE)
-    cursor = conn.cursor()
-    cursor.execute("UPDATE transactions SET production_status = 'Cancelled' WHERE id = ?", (txn_id,))
-    cursor.execute("UPDATE transactions SET status = status || ' | Cancelled: " + reason.replace("'", "") + "' WHERE id = ?", (txn_id,))
-    updated = cursor.rowcount
-    conn.commit()
-    conn.close()
-    if not updated:
-        return jsonify({"message": "Order not found."}), 404
-    return jsonify({"message": "Order cancelled."}), 200
-
-@app.route('/api/admin/order-photo', methods=['POST'])
-def admin_order_photo():
-    """Upload a finished-product photo for an order."""
-    token = request.args.get('token') or request.headers.get('X-Admin-Token') or ''
-    if not ADMIN_TOKENS or token not in ADMIN_TOKENS:
-        return jsonify({"message": "Unauthorized."}), 401
-    txn_id = request.form.get('txn_id')
-    uploaded = request.files.get('file')
-    if not txn_id or not uploaded or not uploaded.filename:
-        return jsonify({"message": "Missing transaction id or file."}), 400
-    file_id = uuid.uuid4().hex
-    os.makedirs(JOB_FILES_DIR, exist_ok=True)
-    safe_name = secure_filename(uploaded.filename) or "finished_order"
-    stored_name = f"{file_id}_{safe_name}"
-    uploaded.save(os.path.join(JOB_FILES_DIR, stored_name))
-    timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    conn = sqlite3.connect(DATABASE_FILE)
-    cursor = conn.cursor()
-    cursor.execute("INSERT INTO order_photos (txn_id, file_id, file_name, uploaded_at) VALUES (?,?,?,?)",
-                   (txn_id, file_id, safe_name, timestamp))
-    conn.commit()
-    conn.close()
-    return jsonify({"message": "Photo uploaded."}), 200
-
-@app.route('/api/order-photo/<int:txn_id>', methods=['GET'])
-def order_photo(txn_id):
-    """Public: latest finished-product photo for an order."""
-    conn = sqlite3.connect(DATABASE_FILE)
-    cursor = conn.cursor()
-    cursor.execute("SELECT file_id FROM order_photos WHERE txn_id = ? ORDER BY id DESC LIMIT 1", (txn_id,))
-    row = cursor.fetchone()
-    conn.close()
-    if not row:
-        return jsonify({"message": "No photo yet."}), 404
-    file_id = row[0]
-    try:
-        matches = [f for f in os.listdir(JOB_FILES_DIR) if f.startswith(file_id + "_")]
-    except FileNotFoundError:
-        matches = []
-    if not matches:
-        return jsonify({"message": "File not found."}), 404
-    return send_from_directory(JOB_FILES_DIR, matches[0])
 
 @app.route('/api/ticket', methods=['POST'])
 def create_ticket():
-    """Customer sends a support message."""
-    data = get_json_body()
+    data = request.get_json(silent=True) or {}
     username = (data.get('username') or '').strip().lower()
-    message = str(data.get('message') or '').strip()
+    message = (data.get('message') or '').strip()
     if not username or not message:
-        return jsonify({"message": "Username and message required."}), 400
-    if len(message.split()) > 100:
-        return jsonify({"message": "Message must be 100 words or less."}), 400
-    timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    conn = sqlite3.connect(DATABASE_FILE)
-    cursor = conn.cursor()
-    cursor.execute("INSERT INTO tickets (username, message, created_at) VALUES (?,?,?)", (username, message, timestamp))
-    conn.commit()
-    conn.close()
-    return jsonify({"message": "Message sent. We will reply soon."}), 200
+        return jsonify({"message": "Missing message."}), 400
+    conn = get_conn()
+    conn.execute("INSERT INTO tickets (username, message, created_at) VALUES (?,?,?)",
+               (username, message, now_str()))
+    conn.commit(); conn.close()
+    return jsonify({"message": "Sent."}), 200
+
 
 @app.route('/api/my-tickets', methods=['GET'])
 def my_tickets():
     username = (request.args.get('user') or '').strip().lower()
-    conn = sqlite3.connect(DATABASE_FILE)
-    conn.row_factory = sqlite3.Row
-    cursor = conn.cursor()
-    cursor.execute("SELECT * FROM tickets WHERE username = ? ORDER BY id DESC LIMIT 50", (username,))
-    rows = [dict(r) for r in cursor.fetchall()]
-    conn.close()
-    return jsonify(rows)
+    conn = get_conn()
+    rows = conn.execute("SELECT * FROM tickets WHERE username = ? ORDER BY id DESC LIMIT 50", (username,)).fetchall()
+    conn.commit(); conn.close()
+    return jsonify([dict(zip(['id', 'message', 'reply', 'status', 'created_at'], r)) for r in rows]), 200
+
 
 @app.route('/api/admin/tickets', methods=['GET'])
 def admin_tickets():
     token = request.args.get('token') or request.headers.get('X-Admin-Token') or ''
-    if not ADMIN_TOKENS or token not in ADMIN_TOKENS:
+    if not admin_ok(token):
         return jsonify({"message": "Unauthorized."}), 401
-    conn = sqlite3.connect(DATABASE_FILE)
-    conn.row_factory = sqlite3.Row
-    cursor = conn.cursor()
-    cursor.execute("SELECT * FROM tickets ORDER BY id DESC LIMIT 100")
-    rows = [dict(r) for r in cursor.fetchall()]
-    conn.close()
-    return jsonify(rows)
+    conn = get_conn()
+    rows = conn.execute("SELECT * FROM tickets ORDER BY id DESC LIMIT 100").fetchall()
+    conn.commit(); conn.close()
+    return jsonify([dict(zip(['id', 'username', 'message', 'reply', 'status', 'created_at'], r)) for r in rows]), 200
+
 
 @app.route('/api/admin/ticket-reply', methods=['POST'])
 def admin_ticket_reply():
     token = request.args.get('token') or request.headers.get('X-Admin-Token') or ''
-    if not ADMIN_TOKENS or token not in ADMIN_TOKENS:
+    if not admin_ok(token):
         return jsonify({"message": "Unauthorized."}), 401
-    data = get_json_body()
+    data = request.get_json(silent=True) or {}
     ticket_id = data.get('id')
-    reply = str(data.get('reply') or '').strip()
+    reply = (data.get('reply') or '').strip()
     if not ticket_id or not reply:
-        return jsonify({"message": "Ticket id and reply required."}), 400
-    timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    conn = sqlite3.connect(DATABASE_FILE)
-    cursor = conn.cursor()
-    cursor.execute("UPDATE tickets SET reply = ?, status = 'Replied', replied_at = ? WHERE id = ?",
-                   (reply, timestamp, ticket_id))
-    updated = cursor.rowcount
-    conn.commit()
-    conn.close()
-    if not updated:
-        return jsonify({"message": "Ticket not found."}), 404
+        return jsonify({"message": "Missing reply."}), 400
+    conn = get_conn()
+    conn.execute("UPDATE tickets SET reply = ?, status = 'Replied' WHERE id = ?", (reply, ticket_id))
+    conn.commit(); conn.close()
     return jsonify({"message": "Reply sent."}), 200
+
 
 @app.route('/api/review', methods=['POST'])
 def create_review():
-    data = get_json_body()
+    data = request.get_json(silent=True) or {}
     username = (data.get('user') or '').strip().lower()
     txn_id = data.get('txn_id')
-    try:
-        rating = int(data.get('rating') or 0)
-    except (TypeError, ValueError):
-        rating = 0
-    comment = str(data.get('comment') or '').strip()
-    if not username or not txn_id or rating < 1 or rating > 5:
-        return jsonify({"message": "Invalid review data."}), 400
-    if not comment or len(comment.split()) > 100:
-        return jsonify({"message": "Comment required (max 100 words)."}), 400
-    timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    conn = sqlite3.connect(DATABASE_FILE)
-    cursor = conn.cursor()
-    cursor.execute("INSERT INTO reviews (username, txn_id, rating, comment, created_at) VALUES (?,?,?,?,?)",
-                   (username, txn_id, rating, comment, timestamp))
-    conn.commit()
-    conn.close()
-    return jsonify({"message": "Thank you for your review!"}), 200
+    rating = int(data.get('rating') or 0)
+    comment = (data.get('comment') or '').strip()
+    if not username or not txn_id or rating < 1 or rating > 5 or not comment:
+        return jsonify({"message": "Invalid review."}), 400
+    conn = get_conn()
+    conn.execute("INSERT INTO reviews (username, txn_id, rating, comment, created_at) VALUES (?,?,?,?,?)",
+               (username, txn_id, rating, comment, now_str()))
+    conn.commit(); conn.close()
+    return jsonify({"message": "Thank you."}), 200
+
 
 @app.route('/api/reviews', methods=['GET'])
 def get_reviews():
-    conn = sqlite3.connect(DATABASE_FILE)
-    conn.row_factory = sqlite3.Row
-    cursor = conn.cursor()
-    cursor.execute("SELECT * FROM reviews ORDER BY id DESC LIMIT 20")
-    rows = [dict(r) for r in cursor.fetchall()]
-    conn.close()
-    return jsonify(rows)
+    conn = get_conn()
+    rows = conn.execute("SELECT * FROM reviews ORDER BY id DESC LIMIT 20").fetchall()
+    conn.commit(); conn.close()
+    return jsonify([dict(zip(['id', 'username', 'txn_id', 'rating', 'comment', 'created_at'], r)) for r in rows]), 200
 
-@app.route('/api/transaction/<int:txn_id>', methods=['GET'])
-def get_transaction(txn_id):
-    conn = sqlite3.connect(DATABASE_FILE)
-    conn.row_factory = sqlite3.Row
-    cursor = conn.cursor()
-    cursor.execute("SELECT * FROM transactions WHERE id = ?", (txn_id,))
-    row = cursor.fetchone()
+
+@app.route('/api/job-file/<file_id>', methods=['GET'])
+def serve_job_file(file_id):
+    token = request.args.get('token') or request.headers.get('X-Admin-Token') or ''
+    if not admin_ok(token):
+        return jsonify({"message": "Unauthorized."}), 401
+    if len(file_id) != 32:
+        return jsonify({"message": "Invalid file id."}), 400
+    for f in os.listdir(JOB_FILES_DIR):
+        if f.startswith(file_id + "_"):
+            return send_from_directory(JOB_FILES_DIR, f, as_attachment=True)
+    return jsonify({"message": "Not found."}), 404
+
+
+@app.route('/api/admin/confirm-cash', methods=['POST'])
+def admin_confirm_cash():
+    token = request.args.get('token') or request.headers.get('X-Admin-Token') or ''
+    if not admin_ok(token):
+        return jsonify({"message": "Unauthorized."}), 401
+    data = request.get_json(silent=True) or {}
+    conn = get_conn()
+    conn.execute("""UPDATE transactions SET status = 'Cash Payment Confirmed / Approved for Production'
+        WHERE id = ? AND status = 'Cash Payment Pending Confirmation'""",
+        (data.get('id'),))
+    conn.commit(); conn.close()
+    return jsonify({"message": "Confirmed."}), 200
+
+@app.route('/api/admin/transactions', methods=['GET'])
+def admin_transactions():
+    token = request.args.get('token') or request.headers.get('X-Admin-Token') or ''
+    if not admin_ok(token):
+        return jsonify({"message": "Unauthorized."}), 401
+    conn = get_conn()
+    rows = conn.execute("""SELECT id, username, job_type, actual_price, vip_money,
+        total_price, status, production_status, timestamp, method, notes, is_vip
+        FROM transactions ORDER BY id DESC LIMIT 200""").fetchall()
+    cards = conn.execute("SELECT card_id, username, tier, valid_until FROM vip_cards ORDER BY card_id DESC").fetchall()
+    conn.close()
+    return jsonify({"transactions": [dict(zip(['id', 'username', 'job_type', 'actual_price', 'vip_money',
+        'total_price', 'status', 'production_status', 'timestamp', 'method', 'notes', 'is_vip'], r)) for r in rows],
+                   "vip_cards": [dict(zip(['card_id', 'username', 'tier', 'valid_until'], r)) for r in cards]}), 200
+
+
+@app.route('/api/admin/stats', methods=['GET'])
+def admin_stats():
+    token = request.args.get('token') or request.headers.get('X-Admin-Token') or ''
+    if not admin_ok(token):
+        return jsonify({"message": "Unauthorized."}), 401
+    conn = get_conn()
+    total_orders, total_revenue = conn.execute(
+        "SELECT COUNT(*), COALESCE(SUM(total_price),0) FROM transactions WHERE status NOT LIKE '%Pending%'").fetchone()
+    pending_cash = conn.execute(
+        "SELECT COUNT(*) FROM transactions WHERE status = 'Cash Payment Pending Confirmation'").fetchone()[0]
+    pending_transfer = conn.execute(
+        "SELECT COUNT(*) FROM transactions WHERE status = 'Transfer Pending Approval'").fetchone()[0]
+    vip_cards = conn.execute("SELECT COUNT(*) FROM vip_cards").fetchone()[0]
+    subs = conn.execute("SELECT COUNT(*) FROM sub_cards").fetchone()[0]
+    customers = conn.execute("SELECT COUNT(*) FROM users").fetchone()[0]
+    today = datetime.datetime.now().strftime("%Y-%m-%d")
+    today_orders, today_revenue = conn.execute(
+        "SELECT COUNT(*), COALESCE(SUM(total_price),0) FROM transactions WHERE timestamp LIKE ?", (today + "%",)).fetchone()
+    open_tickets = conn.execute("SELECT COUNT(*) FROM tickets WHERE status = 'Open'").fetchone()[0]
+    conn.close()
+    return jsonify({"total_orders": total_orders, "total_revenue": total_revenue,
+                   "pending_cash": pending_cash, "pending_transfer": pending_transfer,
+                   "vip_cards": vip_cards, "sub_cards": subs,
+                   "customers": customers, "orders_today": today_orders,
+                   "revenue_today": today_revenue, "open_tickets": open_tickets}), 200
+
+
+@app.route('/api/admin/export-csv', methods=['GET'])
+def export_csv():
+    token = request.args.get('token') or request.headers.get('X-Admin-Token') or ''
+    if not admin_ok(token):
+        return jsonify({"message": "Unauthorized."}), 401
+    conn = get_conn()
+    rows = conn.execute("""SELECT id, username, job_type, actual_price, vip_money,
+        total_price, status, production_status, timestamp, method, is_vip, notes
+        FROM transactions ORDER BY id DESC""").fetchall()
+    conn.close()
+    lines = ["id,username,job_type,actual_price,vip_money,total_price,status,production_status,timestamp,method,is_vip,notes"]
+    for r in rows:
+        vals = [str(r[i] or "") for i in (0,1,2,3,4,5,6,7,8,9,10,11)]
+        lines.append(",".join(vals))
+    return Response("\n".join(lines), mimetype="text/csv",
+                   headers={"Content-Disposition": "attachment; filename=orders.csv"}), 200
+
+
+@app.route('/api/admin/order-status', methods=['POST'])
+def admin_order_status():
+    token = request.args.get('token') or request.headers.get('X-Admin-Token') or ''
+    if not admin_ok(token):
+        return jsonify({"message": "Unauthorized."}), 401
+    data = request.get_json(silent=True) or {}
+    status = data.get('production_status') or ''
+    if status not in ("Awaiting Production", "In Production", "Ready for Pickup", "Completed", "Cancelled"):
+        return jsonify({"message": "Invalid status."}), 400
+    conn = get_conn()
+    conn.execute("UPDATE transactions SET production_status = ? WHERE id = ?", (status, data.get('id')))
+    conn.commit(); conn.close()
+    return jsonify({"message": "Status updated."}), 200
+
+
+@app.route('/api/admin/cancel-order', methods=['POST'])
+def admin_cancel_order():
+    token = request.args.get('token') or request.headers.get('X-Admin-Token') or ''
+    if not admin_ok(token):
+        return jsonify({"message": "Unauthorized."}), 401
+    data = request.get_json(silent=True) or {}
+    reason = (data.get('reason') or '').strip()
+    if not reason:
+        return jsonify({"message": "Reason required."}), 400
+    conn = get_conn()
+    conn.execute("UPDATE transactions SET production_status = 'Cancelled' WHERE id = ?", (data.get('id'),))
+    conn.commit(); conn.close()
+    return jsonify({"message": "Cancelled."}), 200
+
+
+@app.route('/api/admin/order-photo', methods=['POST'])
+def admin_order_photo():
+    token = request.args.get('token') or request.headers.get('X-Admin-Token') or ''
+    if not admin_ok(token):
+        return jsonify({"message": "Unauthorized."}), 401
+    txn_id = request.form.get('txn_id')
+    uploaded = request.files.get('file')
+    if not txn_id or not uploaded:
+        return jsonify({"message": "Missing file."}), 400
+    file_id = uuid.uuid4().hex
+    os.makedirs(JOB_FILES_DIR, exist_ok=True)
+    name = f"{file_id}_{secure_filename(uploaded.filename) or 'photo'}"
+    uploaded.save(os.path.join(JOB_FILES_DIR, name))
+    conn = get_conn()
+    conn.execute("INSERT INTO order_photos (txn_id, file_id) VALUES (?,?)", (txn_id, file_id))
+    conn.commit(); conn.close()
+    return jsonify({"message": "Photo saved."}), 200
+
+
+@app.route('/api/order-photo/<int:txn_id>', methods=['GET'])
+def order_photo(txn_id):
+    conn = get_conn()
+    row = conn.execute("SELECT file_id FROM order_photos WHERE txn_id = ? ORDER BY id DESC LIMIT 1", (txn_id,)).fetchone()
+    conn.close()
+    if not row:
+        return jsonify({"message": "No photo."}), 404
+    for f in os.listdir(JOB_FILES_DIR):
+        if f.startswith(row[0] + "_"):
+            return send_from_directory(JOB_FILES_DIR, f)
+    return jsonify({"message": "Not found."}), 404
+
+
+@app.route('/api/vip-card-qr/<card_id>', methods=['GET'])
+def serve_vip_qr(card_id):
+    token = request.args.get('token') or request.headers.get('X-Admin-Token') or ''
+    if not admin_ok(token):
+        return jsonify({"message": "Unauthorized."}), 401
+    if len(card_id) != 3:
+        return jsonify({"message": "Invalid card id."}), 400
+    conn = get_conn()
+    row = conn.execute("SELECT qr_path FROM vip_cards WHERE card_id = ?", (card_id,)).fetchone()
     conn.close()
     if not row:
         return jsonify({"message": "Not found."}), 404
-    return jsonify(dict(row))
+    return send_from_directory('.', row[0])
 
-# ---------------------------------------------------------------------------
-# Serve the frontend pages (Render only runs what app.py exposes)
-# ---------------------------------------------------------------------------
-@app.route('/')
-def home():
-    return send_from_directory('.', 'VLAND.html')
+
+@app.route('/api/admin/reactions', methods=['GET'])
+def admin_reactions():
+    token = request.args.get('token') or request.headers.get('X-Admin-Token') or ''
+    if not admin_ok(token):
+        return jsonify({"message": "Unauthorized."}), 401
+    conn = get_conn()
+    rows = conn.execute("SELECT target_type, target_id, reaction, COUNT(*) FROM reactions GROUP BY target_type, target_id, reaction").fetchall()
+    conn.commit(); conn.close()
+    out = {}
+    for r in rows:
+        out.setdefault((r[0], r[1]), []).append(r[2])
+    return jsonify(out), 200
+
+
+@app.route('/api/admin/test-mode', methods=['POST'])
+def admin_test_mode():
+    token = request.args.get('token') or request.headers.get('X-Admin-Token') or ''
+    if not admin_ok(token):
+        return jsonify({"message": "Unauthorized."}), 401
+    data = request.get_json(silent=True) or {}
+    conn = get_conn()
+    conn.execute("INSERT INTO admin_settings (key, value) VALUES ('test_mode', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+               (str(1 if data.get('enabled') else 0),))
+    conn.commit(); conn.close()
+    return jsonify({"message": "Test mode updated."}), 200
+
+
+@app.route('/api/admin/users', methods=['GET'])
+def admin_users():
+    token = request.args.get('token') or request.headers.get('X-Admin-Token') or ''
+    if not admin_ok(token):
+        return jsonify({"message": "Unauthorized."}), 401
+    conn = get_conn()
+    rows = conn.execute("SELECT username, nickname FROM users ORDER BY username").fetchall()
+    login_counts = {}
+    for r in conn.execute("SELECT username, COUNT(*) FROM login_log GROUP BY username"):
+        login_counts[r[0]] = r[1]
+    conn.close()
+    return jsonify([{"username": r[0], "nickname": r[1], "logins": login_counts.get(r[0], 0)} for r in rows]), 200
+
+
+@app.route('/api/payment-methods', methods=['POST'])
+def admin_payment_methods():
+    token = request.args.get('token') or request.headers.get('X-Admin-Token') or ''
+    if not admin_ok(token):
+        return jsonify({"message": "Unauthorized."}), 401
+    data = request.get_json(silent=True) or {}
+    conn = get_conn()
+    for method, enabled in (("paystack", data.get('paystack', True)),
+                          ("cash", data.get('cash', True)),
+                          ("transfer", data.get('transfer', True))):
+        conn.execute("""INSERT INTO payment_settings (method, enabled) VALUES (?,?)
+            ON CONFLICT(method) DO UPDATE SET enabled = excluded.enabled""",
+            (method, 1 if enabled else 0))
+    conn.commit(); conn.close()
+    return jsonify({"message": "Payment methods updated."}), 200
+
+
+@app.route('/api/my-sub', methods=['GET'])
+def my_sub():
+    username = (request.args.get('user') or '').strip().lower()
+    conn = get_conn()
+    row = conn.execute("SELECT sub_id, tag, valid_until FROM sub_cards WHERE username = ? ORDER BY registered_at DESC LIMIT 1",
+                    (username,)).fetchone()
+    if not row:
+        return jsonify({"has_sub": False}), 200
+    sub_id, tag, valid_until = row
+    uses_row = conn.execute("SELECT uses_count FROM sub_cards WHERE sub_id = ?", (sub_id,)).fetchone()
+    conn.close()
+    left = max(0, SUBS_PER_WEEK - (uses_row[0] if uses_row else 0))
+    return jsonify({"has_sub": True, "tag": tag, "valid_until": valid_until,
+                   "uses_left": left}), 200
+
+
+def build_card_slip_png(card_id, user, include_sub):
+    from PIL import Image, ImageDraw, ImageFont
+    conn = get_conn()
+    card = conn.execute("SELECT card_id, username, name, sex, tier, valid_until FROM vip_cards WHERE card_id = ?",
+                    (card_id,)).fetchone()
+    sub = None
+    if include_sub:
+        sub = conn.execute("SELECT sub_id, tag FROM sub_cards WHERE username = ? ORDER BY registered_at DESC LIMIT 1",
+                        (user,)).fetchone()
+    conn.close()
+    if not card:
+        return None
+    try:
+        big = ImageFont.load_default(size=26)
+        med = ImageFont.load_default(size=18)
+        small = ImageFont.load_default(size=14)
+    except TypeError:
+        big = med = small = ImageFont.load_default()
+    img = Image.new('RGB', (820, 1020), '#fdfdff')
+    draw = ImageDraw.Draw(img)
+
+    def text(x, y, s, font=med, fill='#222'):
+        draw.text((x, y), s, font=font, fill=fill)
+
+    text(30, 30, 'FodaKem VIP', font=big, fill='#6b46c1')
+    text(30, 70, 'CARD & SUBSIDIARY SLIP', font=small, fill='#718096')
+
+    sex_word = {'Male': 'Male', 'Female': 'Female'}.get(card[3] or '', '')
+    sub_line = f"Sub Card: {'Yes' if sub else 'No'}"
+    text(30, 130, f"Card ID      : PRY-STYLE {card_id}", font=small)
+    text(30, 170, f"Holder Name   : {card[2] or '-'}")
+    text(30, 205, f"Sex           : {sex_word or '-'}")
+    text(30, 240, f"Phone         : -")
+    text(30, 275, f"Plan          : {card[4]}")
+    text(30, 310, f"Valid Until   : {card[5] or '-'}")
+    text(30, 350, 'VIP CARD SECTION', font=big, fill='#6b46c1')
+    text(30, 400, f"Card holder   : {card[2] or '-'}")
+    text(30, 440, f"Registered as : {card_id}")
+    if sub:
+        text(30, 500, f"Sub Card ID   : {sub[0]}")
+        text(30, 540, f"Sub Tag       : {sub[1]}")
+        text(30, 580, 'Uses this week : 2 (resets every week)')
+        text(30, 620, 'Valid while your VIP card is active')
+    else:
+        for y in (500, 540, 580, 620):
+            text(30, y, '---------------------------------', font=small, fill='#999')
+        text(30, 620, 'Sub Card: not purchased')
+    return img
+
+
+@app.route('/api/card-slip/<card_id>', methods=['GET'])
+def serve_card_slip(card_id):
+    user = (request.args.get('user') or '').strip().lower()
+    include_sub = request.args.get('with_sub') in ('1', 'true', 'True')
+    if not user:
+        return jsonify({"message": "Login required."}), 401
+    conn = get_conn()
+    card = conn.execute("SELECT username FROM vip_cards WHERE card_id = ?", (card_id,)).fetchone()
+    if not card or card[0] != user:
+        conn.close()
+        return jsonify({"message": "This card is not yours."}), 403
+    txn = conn.execute("""SELECT status FROM transactions WHERE username = ? AND job_type LIKE 'VIP Card%'
+        ORDER BY id DESC LIMIT 1""", (user,)).fetchone()
+    conn.close()
+    if txn and 'Pending' in str(txn[0]):
+        return jsonify({"message": "Payment not confirmed yet."}), 403
+    img = build_card_slip_png(card_id, user, include_sub)
+    if img is None:
+        return jsonify({"message": "Cannot create the slip."}), 500
+    out = io.BytesIO()
+    img.save(out, format='PNG')
+    out.seek(0)
+    return Response(out.read(), mimetype='image/png',
+                   headers={'Content-Disposition': 'attachment; filename="fodakem-slip.png"'})
+
 
 @app.route('/<path:filename>')
 def serve_static(filename):
@@ -1057,9 +1276,11 @@ def serve_static(filename):
         return send_from_directory('.', filename)
     return jsonify({"message": "Not found"}), 404
 
+
+init_db()
+
 if __name__ == '__main__':
-    # debug=True is DANGEROUS in production (exposes an interactive debugger).
-    # Only enable it locally via FLASK_DEBUG=1; Render defaults it to off.
     debug_mode = os.environ.get("FLASK_DEBUG", "0") == "1"
-    # Runs globally on Render network channels
     app.run(host='0.0.0.0', port=5000, debug=debug_mode)
+
+

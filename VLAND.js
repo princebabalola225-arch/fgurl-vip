@@ -28,6 +28,7 @@ authForm.addEventListener('submit', async (e) => {
     e.preventDefault();
     const usernameInput = document.getElementById('username').value;
     const passwordInput = document.getElementById('password').value;
+    const nicknameInput = document.getElementById('nickname').value;
     
     submitBtn.disabled = true;
     submitBtn.innerHTML = `<span class="spinner"></span> Processing...`;
@@ -39,13 +40,14 @@ authForm.addEventListener('submit', async (e) => {
         const response = await fetch(targetUrl, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ username: usernameInput, password: passwordInput })
+            body: JSON.stringify({ username: usernameInput, password: passwordInput, nickname: nicknameInput })
         });
 
         const data = await response.json();
 
         if (response.ok) {
-            localStorage.setItem('active_user', usernameInput);
+            const activeUser = data.username || usernameInput;
+            localStorage.setItem('active_user', activeUser);
             messageEl.className = "message success";
             messageEl.innerText = data.message;
             setTimeout(() => {
