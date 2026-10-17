@@ -315,6 +315,25 @@
             loadJobUpdates();
         });
 
+        // ----- VIP REMINDER BANNER (six seconds) -----
+        function runVipTimer() {
+            if (localStorage.getItem('vip_reminder_active') === 'true') {
+                const startTime = parseInt(localStorage.getItem('vip_timer_start'), 10);
+                const timerInterval = setInterval(() => {
+                    if (localStorage.getItem('vip_reminder_active') === 'false') {
+                        document.getElementById('vipBanner').style.display = 'none';
+                        clearInterval(timerInterval);
+                        return;
+                    }
+                    if ((Date.now() - startTime) >= 6000) {
+                        document.getElementById('vipBanner').style.display = 'none';
+                        clearInterval(timerInterval);
+                    }
+                }, 500);
+            }
+        }
+        runVipTimer();
+
         // ----- INIT -----
         loadProfile();
         loadNotifications();

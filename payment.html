@@ -50,8 +50,8 @@
         const BACKEND_URL = window.location.origin;
 
         const job = localStorage.getItem('checkout_job');
-        const actual = parseInt(localStorage.getItem('checkout_actual_price'), 10) || 0;
-        // BUG FIX: use the surcharge rate chosen on the jobs page (0.00 or 0.25)
+        const actual = parseFloat(localStorage.getItem('checkout_actual_price')) || 0;
+        // BUG FIX: use the surcharge rate chosen on the jobs page (0.00 or 0.25 or -0.25)
         const surchargeRate = parseFloat(localStorage.getItem('checkout_surcharge_rate') || '0.25');
 
         const vipSurcharge = actual * surchargeRate;

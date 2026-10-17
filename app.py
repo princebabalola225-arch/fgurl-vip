@@ -353,6 +353,71 @@ def vip_active(username):
     return row is not None
 
 
+def negotiation_blocked(username, job_type):
+    conn = get_conn()
+    row = conn.execute("""SELECT negotiation FROM transactions
+        WHERE username = ? AND job_type = ? AND status = 'Negotiation Pending'
+        ORDER BY id DESC LIMIT 1""", (username, job_type)).fetchone()
+    conn.close()
+    if not row:
+        return False
+    try:
+        data = json.loads(row[0] or '{}')
+    except ValueError:
+        return True
+    return data.get('last_price') is None
+
+
+def start_negotiation_route():
+    data = request.get_json(silent=True) or {}
+    username = (data.get('user') or '').strip().lower()
+    job_type = data.get('job_type') or ''
+    params = data.get('params') or {}
+    notes = str(data.get('notes') or '')
+    category = str(data.get('notes_category') or '')
+    surcharge_rate = float(data.get('surcharge_rate') or 0)
+    if not username or not job_type:
+        return jsonify({"message": "Missing order details."}), 400
+    actual = compute_job_price(job_type, params)
+    if actual is None:
+        return jsonify({"message": "Invalid job parameters supplied."}), 400
+    total = actual * (1 + surcharge_rate)
+    ts = now_str()
+    conn = get_conn()
+    conn.execute("""INSERT INTO transactions
+        (username, job_type, actual_price, vip_money, total_price, status,
+         production_status, timestamp, file_id, method, is_vip, negotiation)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?)""",
+        (username, job_type, actual, actual * surcharge_rate, total,
+         'Negotiation Pending', 'Awaiting Production', ts, data.get('file_id') or '',
+         '', 0, json.dumps({"message": notes, "notes_category": category, "last_price": None})))
+    draft_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+    conn.commit()
+    conn.close()
+    return jsonify({"draft_id": draft_id}), 200
+
+
+@app.route('/api/start-negotiation', methods=['POST'])
+def start_negotiation():
+    return start_negotiation_route()
+
+
+@app.route('/api/draft-status/<int:draft_id>', methods=['GET'])
+def draft_status(draft_id):
+    conn = get_conn()
+    row = conn.execute("SELECT negotiation FROM transactions WHERE id = ?", (draft_id,)).fetchone()
+    conn.close()
+    if not row:
+        return jsonify({"message": "Not found."}), 404
+    try:
+        data = json.loads(row[0] or '{}')
+    except ValueError:
+        data = {}
+    if data.get('last_price') is not None:
+        return jsonify({"status": "answered", "last_price": data['last_price']}), 200
+    return jsonify({"status": "pending"}), 200
+
+
 def create_txn(username, job_type, actual_price, vip_money, total_price, status, timestamp,
              paystack_ref='', file_id='', method='', production_status='Awaiting Production'):
     has_vip = 1 if vip_active(username) else 0
@@ -411,6 +476,8 @@ def cash_order():
     actual = compute_job_price(job_type, params)
     if actual is None:
         return jsonify({"message": "Invalid job parameters supplied."}), 400
+    if negotiation_blocked(username, job_type):
+        return jsonify({"message": "A price decision is awaited. Please wait for the admin's answer."}), 409
     vip_rate = float(data.get('surcharge_rate') or 0)
     total = actual * (1 + vip_rate)
     ts = now_str()
@@ -441,6 +508,8 @@ def transfer_order():
     actual = compute_job_price(job_type, params)
     if actual is None:
         return jsonify({"message": "Invalid job parameters supplied."}), 400
+    if negotiation_blocked(username, job_type):
+        return jsonify({"message": "A price decision is awaited. Please wait for the admin's answer."}), 409
     vip_rate = float(data.get('surcharge_rate') or 0)
     total = actual * (1 + vip_rate)
     chosen = [a for a in TRANSFER_ACCOUNTS if a['number'] == str(account.get('number') or '')]
@@ -1268,6 +1337,11 @@ def serve_card_slip(card_id):
     out.seek(0)
     return Response(out.read(), mimetype='image/png',
                    headers={'Content-Disposition': 'attachment; filename="fodakem-slip.png"'})
+
+
+@app.route('/')
+def home():
+    return send_from_directory('.', 'VLAND.html')
 
 
 @app.route('/<path:filename>')
