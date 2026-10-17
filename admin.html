@@ -66,6 +66,12 @@
                 <button class="btn btn-accent" onclick="enableNotifications()" id="notifBtn">&#128276; Enable Alerts</button>
             </div>
             <p id="notifStatus" style="font-size:12px; color:#718096; margin-top:6px;">Alerts are OFF &mdash; click &quot;Enable Alerts&quot; to get notified about new orders, messages and reviews.</p>
+            <label style="display:flex; align-items:center; gap:8px; font-size:13px; margin-top:10px; flex-wrap:wrap;">
+                <input type="checkbox" id="testModeEnabled" style="width:16px; height:16px; accent-color:#553c9a;">
+                Test mode (login as <strong>test1</strong> / TEST123 - skips payment checks)
+            </label>
+            <button class="btn btn-small btn-brand" onclick="saveTestMode()" style="margin-top:10px;">💾 Save Test Mode</button>
+            <p id="testModeMsg" style="margin-top:8px; font-size:12px; color:#718096;"></p>
             <p id="adminMsg" class="message" style="margin-top:10px;"></p>
         </div>
 
@@ -649,6 +655,30 @@
                     <p style="font-size:13px; color:#2d3748; margin-top:5px;">${esc(r.comment)}</p>
                     <p style="font-size:11px; color:#a0aec0; margin-top:3px;">${esc(r.created_at)}</p>
                 </div>`).join('');
+        }
+
+        async function saveTestMode() {
+            const msg = document.getElementById('testModeMsg');
+            const enabled = document.getElementById('testModeEnabled').checked;
+            msg.innerText = 'Saving...';
+            try {
+                const res = await fetch(`${BACKEND_URL}/api/admin/test-mode?token=${encodeURIComponent(savedToken)}`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ enabled }),
+                });
+                const data = await res.json();
+                if (res.ok) {
+                    msg.style.color = '#2f855a';
+                    msg.innerText = '✅ ' + data.message;
+                } else {
+                    msg.style.color = '#c53030';
+                    msg.innerText = data.message;
+                }
+            } catch (e) {
+                msg.style.color = '#c53030';
+                msg.innerText = 'Cannot reach server.';
+            }
         }
 
         // ----- INIT -----
