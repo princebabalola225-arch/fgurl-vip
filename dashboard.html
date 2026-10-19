@@ -192,18 +192,16 @@
             } catch (e) { /* ignore */ }
         }
 
-        function initReactions() {
-            // reactions are loaded together with announcements; counts are stored per announcement id
-            window.REACTIONS = {};
-            const loadCounts = async () => {
-                try {
-                    const res = await fetch(`${BACKEND_URL}/api/reactions?target_type=announcement`);
-                    const items = await res.json();
-                    // group client-side is not needed; the admin endpoint counts per id
-                    window.REACTIONS = {};
-                } catch (e) { /* ignore */ }
-            };
-            loadCounts();
+        function countReactions() {
+            // load all reactions and count them per target
+            fetch(`${BACKEND_URL}/api/reactions?target_type=announcement`).then(r => r.json()).then(items => {
+                const counts = {};
+                items.forEach(entry => {
+                    counts[entry.target_id] = entry.counts;
+                });
+                window.REACTIONS = counts;
+                loadAnnouncements();
+            }).catch(() => { window.REACTIONS = {}; });
         }
 
         // ----- TRANSACTIONS -----
@@ -222,6 +220,7 @@
                     <td>₦${Number(log.total_price || 0).toLocaleString()}</td>
                     <td style="color:${String(log.status).includes('Pending') ? '#c05621' : 'green'};">${esc(log.status)}</td>
                     <td style="color:${psColor}; font-weight:bold;">${esc(ps)}</td>
+                    ${ps === 'Completed' ? `<button class="btn btn-small" style="background:#553c9a; color:white; margin-left:8px;" onclick="openReview(${log.id})">⭐ Rate</button>` : ''}
                 </tr>`;
             });
             document.getElementById('historyLog').innerHTML = logs.length ? output + '</table>' : '<p>No orders yet.</p>';
@@ -336,12 +335,20 @@
 
         // ----- INIT -----
         loadProfile();
-        loadNotifications();
+        loadNotifications(true);
         markNotificationsRead();
         loadAnnouncements();
-        initReactions();
+        countReactions();
         loadTransactions();
         loadJobUpdates();
+        // Auto-refresh the dashboard every 15 seconds
+        setInterval(async () => {
+            loadProfile();
+            await loadNotifications(false);
+            await loadAnnouncements();
+            await loadTransactions();
+            await loadJobUpdates();
+        }, 15000);
     </script>
 </body>
 </html>

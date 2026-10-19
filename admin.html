@@ -87,6 +87,7 @@
             <div style="display:flex; gap:20px; margin-top:12px; flex-wrap:wrap;">
                 <label style="font-size:15px; font-weight:600;"><input type="checkbox" id="paystackEnabled" checked style="width:20px; height:20px; accent-color:#553c9a;"> Paystack (Card/Transfer)</label>
                 <label style="font-size:15px; font-weight:600;"><input type="checkbox" id="cashEnabled" checked style="width:20px; height:20px; accent-color:#553c9a;"> Pay in Cash</label>
+                <label style="font-size:15px; font-weight:600;"><input type="checkbox" id="transferEnabled" checked style="width:20px; height:20px; accent-color:#553c9a;"> Bank Transfer</label>
             </div>
             <button class="btn btn-brand btn-small" onclick="savePaymentMethods()" style="margin-top:12px;">💾 Save Payment Methods</button>
             <p id="payMethodMsg" style="margin-top:8px;"></p>
@@ -146,6 +147,59 @@
         <div class="section section-tickets">
             <h3 style="color:#c53030;">💬 Support Tickets</h3>
             <div id="ticketList" style="margin-top:10px;"><p style="color:#999;">Load orders to see tickets.</p></div>
+        </div>
+
+        <!-- REACTIONS -->
+        <div class="section" style="background:#fff; border:1px solid #e2e8f0;">
+            <h3 style="color:#276749;">👍 Reaction Counts</h3>
+            <p style="font-size:13px; color:#718096;">How customers react to news and updates.</p>
+            <div id="reactionCounts" style="margin-top:10px;"><p style="color:#999;">Loading...</p></div>
+        </div>
+
+        <!-- USERS -->
+        <div class="section" style="background:#fff; border:1px solid #e2e8f0;">
+            <h3 style="color:#2b6cb0;">👥 Customers &amp; Logins</h3>
+            <p style="font-size:13px; color:#718096;">Registered customers and how often they sign in.</p>
+            <div id="userList" style="margin-top:10px;"><p style="color:#999;">Loading...</p></div>
+        </div>
+
+        <!-- JOB UPDATES -->
+        <div class="section section-orders">
+            <h3 style="color:#c05621;">📝 Job Updates (Need Approval)</h3>
+            <p style="font-size:13px; color:#718096;">Customer updates appear here after you approve or reject them.</p>
+            <div id="jobUpdateList" style="margin-top:10px;"><p style="color:#999;">Loading...</p></div>
+        </div>
+
+        <!-- PRICE CHANGE -->
+        <div class="section section-orders">
+            <h3 style="color:#6b46c1;">💰 Change Job Price</h3>
+            <p style="font-size:13px; color:#718096;">Increase or decrease a customer's price. Use % (20 = +20%) or an absolute amount. A reason is required.</p>
+            <div style="display:flex; gap:10px; flex-wrap:wrap; margin-top:10px;">
+                <select id="priceTxnSelect" class="input-field" style="width:240px;" onchange="togglePriceUserField()">
+                    <option value="">All customers (general)</option>
+                    <option value="single">One customer</option>
+                </select>
+                <input type="text" id="priceTxnUser" class="input-field" placeholder="Customer nickname (when single)" style="width:180px; display:none;" disabled>
+                <select id="priceModeSelect" class="input-field" style="width:170px;">
+                    <option value="percent">Percent (20 = +20%)</option>
+                    <option value="amount">Absolute amount (₦)</option>
+                </select>
+                <input type="number" id="priceValue" class="input-field" placeholder="Value" style="width:140px;" step="any">
+                <input type="text" id="priceReason" class="input-field" placeholder="Reason (required)" style="width:240px;">
+                <button class="btn btn-brand btn-small" onclick="applyPriceChange()">Apply Price Change</button>
+            </div>
+            <p id="priceMsg" style="margin-top:10px;"></p>
+        </div>
+
+        <!-- SHARED FILES (admin zone) -->
+        <div class="section section-news">
+            <h3 style="color:#276749;">📁 Shared Files (Admin Zone)</h3>
+            <p style="font-size:13px; color:#718096;">Upload files (images or any type) — drag &amp; drop or pick. Other admins can download them.</p>
+            <div id="dropZone" style="border:2px dashed #cbd5e0; border-radius:10px; padding:25px; text-align:center; color:#718096; margin-top:10px; cursor:pointer;" onclick="document.getElementById('sharedFileInput').click()">
+                <p style="font-size:14px;">📂 Drag &amp; drop a file here or click to choose</p>
+                <input type="file" id="sharedFileInput" style="display:none;" onchange="uploadSharedFile(this)">
+            </div>
+            <div id="sharedFileList" style="margin-top:12px;"><p style="color:#999;">Loading...</p></div>
         </div>
 
         <!-- REVIEWS -->
@@ -336,6 +390,7 @@
                     body: JSON.stringify({
                         paystack: document.getElementById('paystackEnabled').checked,
                         cash: document.getElementById('cashEnabled').checked,
+                        transfer: document.getElementById('transferEnabled').checked,
                     }),
                 });
                 const data = await res.json();
@@ -371,6 +426,10 @@
                 renderCards(data.vip_cards || []);
                 renderTickets();
                 renderReviews();
+                loadReactionCounts();
+                loadUsers();
+                loadJobUpdates();
+                loadSharedFiles();
                 loadPostedUpdates();
                 loadAvailability();
                 checkForNewActivity();
@@ -429,6 +488,8 @@
                             ${ORDER_STATUSES.map(s => `<option ${s === ps ? 'selected' : ''}>${s}</option>`).join('')}
                         </select>
                         ${payPending ? `<button class="btn btn-small" style="background:#2f855a; color:white; margin-top:4px;" onclick="confirmCash(${t.id})">✅ Confirm Cash</button>` : ''}
+                        ${String(t.status).includes('Transfer Pending') ? `<button class="btn btn-small" style="background:#2b6cb0; color:white; margin-top:4px;" onclick="approveTransfer(${t.id})">✅ Approve Transfer</button>` : ''}
+                        ${String(t.status).includes('Transfer Pending') ? `<button class="btn btn-small" style="background:#c53030; color:white; margin-top:4px;" onclick="rejectTransfer(${t.id})">✖ Reject Transfer</button>` : ''}
                         <button class="btn btn-small" style="background:#2b6cb0; color:white; margin-top:4px;" onclick="uploadOrderPhoto(${t.id})">📸 Photo</button>
                         <button class="btn btn-small" style="background:#c53030; color:white; margin-top:4px;" onclick="cancelOrder(${t.id})">Cancel</button>
                         ${t.file_id ? `<button class="btn btn-small" style="background:#553c9a; color:white; margin-top:4px;" onclick="downloadJobFile('${t.file_id}')">📎 Download File</button>` : ''}
@@ -475,6 +536,28 @@
             } catch (e) {
                 alert('Cannot reach server.');
             }
+        }
+
+        async function approveTransfer(id) {
+            if (!confirm("Approve this bank transfer?")) return;
+            const res = await fetch(`${BACKEND_URL}/api/admin/approve-transfer?token=${encodeURIComponent(savedToken)}`, {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ id }),
+            });
+            const data = await res.json();
+            alert(data.message);
+            if (res.ok) loadAdminData();
+        }
+
+        async function rejectTransfer(id) {
+            if (!confirm("Reject this bank transfer?")) return;
+            const res = await fetch(`${BACKEND_URL}/api/admin/reject-transfer?token=${encodeURIComponent(savedToken)}`, {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ id }),
+            });
+            const data = await res.json();
+            alert(data.message);
+            if (res.ok) loadAdminData();
         }
 
         function downloadJobFile(fileId) {
@@ -681,8 +764,188 @@
             }
         }
 
+        // ----- REACTIONS COUNTS -----
+        async function loadReactionCounts() {
+            try {
+                const res = await fetch(`${BACKEND_URL}/api/reactions?target_type=announcement`);
+                const items = await res.json();
+                const wrap = document.getElementById('reactionCounts');
+                if (!items.length) { wrap.innerHTML = '<p style="color:#999;">No reactions yet.</p>'; return; }
+                let out = '';
+                items.forEach(entry => {
+                    const counts = entry.counts || {};
+                    const keys = Object.keys(counts);
+                    if (!keys.length) return;
+                    out += `<div style="background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:10px;margin-bottom:8px;">
+                        <strong style="font-size:13px;color:#276749;">Announcement #${entry.target_id}</strong>
+                        <span style="font-size:12px;color:#718096;margin-left:10px;">
+                            ${keys.map(k => `${k}: ${counts[k]}`).join('  ·  ')}
+                        </span></div>`;
+                });
+                wrap.innerHTML = out;
+            } catch (e) {
+                document.getElementById('reactionCounts').innerHTML = '<p style="color:#999;">Loading failed.</p>';
+            }
+        }
+
+        // ----- USERS -----
+        async function loadUsers() {
+            try {
+                const res = await fetch(`${BACKEND_URL}/api/admin/users?token=${encodeURIComponent(savedToken)}`);
+                const users = await res.json();
+                const wrap = document.getElementById('userList');
+                if (!users.length) { wrap.innerHTML = '<p style="color:#999;">No customers yet.</p>'; return; }
+                let out = '';
+                users.forEach(u => `
+                    <div style="background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:10px;margin-bottom:8px;">
+                        <strong style="font-size:13px;color:#2b6cb0;">${esc(u.username)}</strong>
+                        ${u.nickname ? `<span style="font-size:12px;color:#718096;"> (${esc(u.nickname)})</span>` : ''}
+                        <span style="font-size:12px;color:#a0aec0;margin-left:10px;">${u.logins} login(s)</span>
+                    </div>`);
+                wrap.innerHTML = out;
+            } catch (e) {
+                document.getElementById('userList').innerHTML = '<p style="color:#999;">Loading failed.</p>';
+            }
+        }
+
+        // ----- JOB UPDATES MODERATION -----
+        let allJobUpdates = [];
+        async function loadJobUpdates() {
+            try {
+                const res = await fetch(`${BACKEND_URL}/api/admin/job-updates?token=${encodeURIComponent(savedToken)}`);
+                const items = await res.json();
+                allJobUpdates = items;
+                const wrap = document.getElementById('jobUpdateList');
+                if (!items.length) { wrap.innerHTML = '<p style="color:#999;">No customer updates yet.</p>'; return; }
+                let out = '';
+                items.slice(0, 50).forEach(u => `
+                    <div style="background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:10px;margin-bottom:8px;">
+                        <strong style="font-size:13px;color:#2d3748;">#${u.id} — ${esc(u.username)} ${esc(u.source === 'admin' ? '(admin)' : '(customer)')}</strong>
+                        <span style="font-size:12px;color:#a0aec0;margin-left:8px;">${esc(u.status)}</span>
+                        <p style="font-size:13px;color:#2d3748;margin-top:6px;">${esc(u.text)}</p>
+                        <p style="font-size:11px;color:#a0aec0;margin-top:4px;">${esc(u.created_at)}</p>
+                        ${u.status === 'Pending' ? `
+                            <button class="btn btn-small" style="background:#2f855a;color:#fff;margin-top:6px;" onclick="approveJobUpdate(${u.id})">✅ Approve</button>
+                            <button class="btn btn-small" style="background:#c53030;color:#fff;margin-top:6px;" onclick="rejectJobUpdate(${u.id})">✖ Reject</button>` : ''}
+                    </div>`);
+                wrap.innerHTML = out;
+            } catch (e) {
+                document.getElementById('jobUpdateList').innerHTML = '<p style="color:#999;">Loading failed.</p>';
+            }
+        }
+
+        async function approveJobUpdate(id) {
+            if (!confirm('Publish this customer update?')) return;
+            const res = await fetch(`${BACKEND_URL}/api/admin/job-update-action?token=${encodeURIComponent(savedToken)}`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ id, action: 'approve' }),
+            });
+            const data = await res.json();
+            alert(data.message);
+            loadJobUpdates();
+        }
+
+        async function rejectJobUpdate(id) {
+            if (!confirm('Reject this customer update?')) return;
+            const res = await fetch(`${BACKEND_URL}/api/admin/job-update-action?token=${encodeURIComponent(savedToken)}`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ id, action: 'reject' }),
+            });
+            const data = await res.json();
+            alert(data.message);
+            loadJobUpdates();
+        }
+
+        // ----- PRICE CHANGE -----
+        function togglePriceUserField() {
+            const single = document.getElementById('priceTxnSelect').value === 'single';
+            document.getElementById('priceTxnUser').style.display = single ? 'inline-block' : 'none';
+            document.getElementById('priceTxnUser').disabled = !single;
+        }
+
+        async function applyPriceChange() {
+            const msg = document.getElementById('priceMsg');
+            const mode = document.getElementById('priceModeSelect').value;
+            const value = parseFloat(document.getElementById('priceValue').value);
+            const reason = document.getElementById('priceReason').value.trim();
+            if (isNaN(value)) { msg.innerText = 'Enter a valid value.'; return; }
+            if (!reason) { msg.innerText = 'A reason is required.'; return; }
+            const all = document.getElementById('priceTxnSelect').value === '';
+            let target = null;
+            if (!all) {
+                const nickname = document.getElementById('priceTxnUser').value.trim().toLowerCase();
+                target = nickname;
+            }
+            msg.innerText = 'Applying...';
+            try {
+                const res = await fetch(`${BACKEND_URL}/api/admin/set-price?token=${encodeURIComponent(savedToken)}`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ mode, value, reason, txn_id: target }),
+                });
+                const data = await res.json();
+                if (res.ok) { msg.style.color = '#2f855a'; msg.innerText = '✅ ' + data.message; }
+                else { msg.style.color = '#c53030'; msg.innerText = data.message; }
+            } catch (e) {
+                msg.style.color = '#c53030';
+                msg.innerText = 'Cannot reach server.';
+            }
+        }
+
+        // ----- SHARED FILES (admin zone) -----
+        function uploadSharedFile(input) {
+            const file = input.files && input.files[0];
+            if (!file) { alert('Choose a file first.'); return; }
+            const formData = new FormData();
+            formData.append('file', file);
+            fetch(`${BACKEND_URL}/api/admin/shared-files?token=${encodeURIComponent(savedToken)}`, {
+                method: 'POST', body: formData,
+            }).then(r => r.json()).then(data => { alert(data.message); loadSharedFiles(); });
+        }
+
+        async function loadSharedFiles() {
+            try {
+                const res = await fetch(`${BACKEND_URL}/api/admin/shared-files?token=${encodeURIComponent(savedToken)}`);
+                const items = await res.json();
+                const wrap = document.getElementById('sharedFileList');
+                if (!items.length) { wrap.innerHTML = '<p style="color:#999;">No shared files yet.</p>'; return; }
+                wrap.innerHTML = items.map(f => `
+                    <div style="display:flex;align-items:center;gap:10px;background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:10px;margin-bottom:8px;flex-wrap:wrap;">
+                        <span style="font-size:13px;color:#2d3748;flex:1;min-width:150px;">📎 ${esc(f.file_name)}</span>
+                        <span style="font-size:11px;color:#a0aec0;">${esc(f.uploaded_at)}</span>
+                        <button class="btn btn-small" style="background:#553c9a;color:#fff;" onclick="downloadSharedFile('${f.file_id}')">⬇ Download</button>
+                        <button class="btn btn-small" style="background:#c53030;color:#fff;" onclick="deleteSharedFile('${f.file_id}')">🗑 Delete</button>
+                    </div>`).join('');
+            } catch (e) {
+                document.getElementById('sharedFileList').innerHTML = '<p style="color:#999;">Loading failed.</p>';
+            }
+        }
+
+        function downloadSharedFile(fileId) {
+            window.open(`${BACKEND_URL}/api/shared-file/${fileId}?token=${encodeURIComponent(savedToken)}`, '_blank');
+        }
+
+        async function deleteSharedFile(fileId) {
+            if (!confirm('Delete this shared file?')) return;
+            await fetch(`${BACKEND_URL}/api/admin/shared-file/${fileId}?token=${encodeURIComponent(savedToken)}`, { method: 'DELETE' });
+            loadSharedFiles();
+        }
+
         // ----- INIT -----
         renderAvailList();
+        const dropZone = document.getElementById('dropZone');
+        if (dropZone) {
+            dropZone.addEventListener('dragover', (e) => { e.preventDefault(); dropZone.style.borderColor = '#553c9a'; dropZone.style.background = '#faf5ff'; });
+            dropZone.addEventListener('dragleave', () => { dropZone.style.borderColor = '#cbd5e0'; dropZone.style.background = ''; });
+            dropZone.addEventListener('drop', (e) => {
+                e.preventDefault();
+                dropZone.style.borderColor = '#cbd5e0'; dropZone.style.background = '';
+                const file = e.dataTransfer.files && e.dataTransfer.files[0];
+                if (file) { uploadSharedFile({ files: e.dataTransfer.files }); }
+            });
+        }
         loadAvailability();
         loadPaymentMethods();
 
@@ -692,6 +955,7 @@
                 const data = await res.json();
                 document.getElementById('paystackEnabled').checked = data.paystack !== false;
                 document.getElementById('cashEnabled').checked = data.cash !== false;
+                document.getElementById('transferEnabled').checked = data.transfer !== false;
             } catch (e) { /* ignore */ }
         }
     </script>

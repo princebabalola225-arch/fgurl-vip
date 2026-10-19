@@ -177,6 +177,9 @@ def init_db():
     cursor.execute("""CREATE TABLE IF NOT EXISTS order_photos (
         id INTEGER PRIMARY KEY AUTOINCREMENT, txn_id INTEGER, file_id TEXT,
         uploaded_at TEXT)""")
+    cursor.execute("""CREATE TABLE IF NOT EXISTS shared_files (
+        id INTEGER PRIMARY KEY AUTOINCREMENT, file_id TEXT, file_name TEXT,
+        uploaded_by TEXT, uploaded_at TEXT)""")
     cursor.execute("CREATE TABLE IF NOT EXISTS payment_settings (method TEXT PRIMARY KEY, enabled INTEGER DEFAULT 1)")
     cursor.execute("INSERT OR IGNORE INTO admin_settings (key, value) VALUES ('test_mode', '0')")
     conn.commit()
@@ -862,12 +865,17 @@ def add_reaction():
 @app.route('/api/reactions', methods=['GET'])
 def list_reactions():
     target_type = request.args.get('target_type') or ''
-    target_id = request.args.get('target_id') or ''
     conn = get_conn()
-    rows = conn.execute("""SELECT username, reaction FROM reactions
-        WHERE target_type = ? AND target_id = ? ORDER BY id DESC""", (target_type, target_id)).fetchall()
+    rows = conn.execute(
+        "SELECT target_id, username, reaction FROM reactions WHERE target_type = ? ORDER BY id DESC",
+        (target_type,)).fetchall()
     conn.commit(); conn.close()
-    return jsonify([{"username": r[0], "reaction": r[1]} for r in rows]), 200
+    grouped = {}
+    for r in rows:
+        counts = grouped.setdefault(r[0], {})
+        counts[r[2]] = counts.get(r[2], 0) + 1
+    out = [{"target_id": tid, "counts": counts} for tid, counts in grouped.items()]
+    return jsonify(out), 200
 
 @app.route('/api/job-availability', methods=['GET'])
 def job_availability():
@@ -1245,6 +1253,71 @@ def admin_payment_methods():
             (method, 1 if enabled else 0))
     conn.commit(); conn.close()
     return jsonify({"message": "Payment methods updated."}), 200
+
+
+SHARED_FILES_DIR = os.path.join("uploads", "shared_files")
+
+
+@app.route('/api/admin/shared-files', methods=['POST'])
+def upload_shared_file():
+    token = request.args.get('token') or request.headers.get('X-Admin-Token') or ''
+    if not admin_ok(token):
+        return jsonify({"message": "Unauthorized."}), 401
+    uploaded = request.files.get('file')
+    if not uploaded or not uploaded.filename:
+        return jsonify({"message": "No file selected."}), 400
+    file_id = uuid.uuid4().hex
+    os.makedirs(SHARED_FILES_DIR, exist_ok=True)
+    name = f"{file_id}_{secure_filename(uploaded.filename) or 'file'}"
+    uploaded.save(os.path.join(SHARED_FILES_DIR, name))
+    conn = get_conn()
+    conn.execute("""INSERT INTO shared_files (file_id, file_name, uploaded_by, uploaded_at)
+        VALUES (?,?,?,?)""", (file_id, secure_filename(uploaded.filename), '', now_str()))
+    conn.commit()
+    conn.close()
+    return jsonify({"message": "File uploaded."}), 200
+
+
+@app.route('/api/admin/shared-files', methods=['GET'])
+def list_shared_files():
+    token = request.args.get('token') or request.headers.get('X-Admin-Token') or ''
+    if not admin_ok(token):
+        return jsonify({"message": "Unauthorized."}), 401
+    conn = get_conn()
+    rows = conn.execute("""SELECT id, file_id, file_name, uploaded_at FROM shared_files
+        ORDER BY id DESC LIMIT 200""").fetchall()
+    conn.close()
+    return jsonify([{"id": r[0], "file_id": r[1], "file_name": r[2], "uploaded_at": r[3]} for r in rows]), 200
+
+
+@app.route('/api/admin/shared-file/<file_id>', methods=['DELETE'])
+def delete_shared_file(file_id):
+    token = request.args.get('token') or request.headers.get('X-Admin-Token') or ''
+    if not admin_ok(token):
+        return jsonify({"message": "Unauthorized."}), 401
+    if len(file_id) != 32:
+        return jsonify({"message": "Invalid file id."}), 400
+    conn = get_conn()
+    conn.execute("DELETE FROM shared_files WHERE file_id = ?", (file_id,))
+    conn.commit()
+    conn.close()
+    for f in os.listdir(SHARED_FILES_DIR):
+        if f.startswith(file_id + "_"):
+            os.remove(os.path.join(SHARED_FILES_DIR, f))
+    return jsonify({"message": "File deleted."}), 200
+
+
+@app.route('/api/shared-file/<file_id>', methods=['GET'])
+def download_shared_file(file_id):
+    token = request.args.get('token') or request.headers.get('X-Admin-Token') or ''
+    if not admin_ok(token):
+        return jsonify({"message": "Unauthorized."}), 401
+    if len(file_id) != 32:
+        return jsonify({"message": "Invalid file id."}), 400
+    for f in os.listdir(SHARED_FILES_DIR):
+        if f.startswith(file_id + "_"):
+            return send_from_directory(SHARED_FILES_DIR, f, as_attachment=True)
+    return jsonify({"message": "File not found."}), 404
 
 
 @app.route('/api/my-sub', methods=['GET'])
