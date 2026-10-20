@@ -284,13 +284,13 @@
             // Upload the customer's job file/artwork first, then proceed
             let fileId = '';
             const fileInput = document.getElementById(fileInputId);
-            // Read the notes / negotiation entered on this job card
-            const card = source.closest('.job-card');
-            const notesBox = card.querySelector('textarea');
+            // Read the notes / negotiation entered on this job card (by element id)
+            const prefix = fileInputId.replace('File', '');
+            const notesBox = document.getElementById(prefix + 'Notes');
             if (notesBox && notesBox.value.trim()) { params.notes = notesBox.value.trim(); }
-            const catSelect = card.querySelector('select');
+            const catSelect = document.getElementById(prefix + 'NotesCat');
             if (catSelect && catSelect.value) { params.notes_category = catSelect.value; }
-            const negotiateBox = card.querySelector('input[type=checkbox]');
+            const negotiateBox = document.getElementById(prefix + 'Negotiate');
             if (negotiateBox && negotiateBox.checked) { params.negotiate = 'yes'; }
             if (fileInput && fileInput.files && fileInput.files[0]) {
                 const formData = new FormData();
@@ -305,12 +305,60 @@
                     return;
                 }
             }
+            // If the customer asked for price negotiation, START it and wait for the admin
+            if (params.negotiate === 'yes') {
+                await startNegotiationFlow(jobType, actualPrice, surchargeRate, params, fileId);
+                return;
+            }
             localStorage.setItem('checkout_job', jobType);
             localStorage.setItem('checkout_actual_price', actualPrice);
             localStorage.setItem('checkout_surcharge_rate', surchargeRate);
             localStorage.setItem('checkout_params', JSON.stringify(params || {}));
             localStorage.setItem('checkout_file_id', fileId);
             window.location.href = 'payment.html';
+        }
+
+        async function startNegotiationFlow(jobType, actualPrice, surchargeRate, params, fileId) {
+            // Store everything the payment page needs once the price is decided
+            localStorage.setItem('checkout_job', jobType);
+            localStorage.setItem('checkout_actual_price', actualPrice);
+            localStorage.setItem('checkout_surcharge_rate', surchargeRate);
+            localStorage.setItem('checkout_params', JSON.stringify(params || {}));
+            localStorage.setItem('checkout_file_id', fileId);
+            const res = await fetch(`${BACKEND_URL}/api/start-negotiation`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    user: localStorage.getItem('active_user') || 'guest',
+                    job_type: jobType,
+                    surcharge_rate: surchargeRate,
+                    params,
+                    notes: params.notes || '',
+                    notes_category: params.notes_category || '',
+                    file_id: fileId,
+                }),
+            });
+            const data = await res.json();
+            if (!res.ok) { alert(data.message || 'Could not start negotiation.'); return; }
+            alert('Negotiation sent! The admin will set your price. We will continue to payment once it is ready.');
+            pollDraft(data.draft_id);
+        }
+
+        function pollDraft(draftId) {
+            const check = async () => {
+                try {
+                    const res = await fetch(`${BACKEND_URL}/api/draft-status/${draftId}`);
+                    const data = await res.json();
+                    if (data.status === 'answered') {
+                        alert(`Price decided: ₦${Number(data.last_price).toLocaleString()}. Going to payment...`);
+                        localStorage.setItem('checkout_actual_price', data.last_price);
+                        window.location.href = 'payment.html';
+                        return;
+                    }
+                } catch (e) { /* keep polling */ }
+                setTimeout(check, 5000);
+            };
+            check();
         }
 
         function calculateStickerPrice() {

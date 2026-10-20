@@ -13,6 +13,7 @@
             <p style="margin-bottom: 20px; font-weight: bold; color: #555;">GAIN ACCESS TO DISCOUNTS</p>
 
             <form id="vipForm">
+                <input type="hidden" id="currentCardId" value="">
                 <input type="text" id="vipNickname" placeholder="Nickname (6+ letters, for login)" class="input-field" required>
                 <input type="text" id="vipName" placeholder="Full Name" class="input-field" required>
                 <input type="tel" id="vipPhone" placeholder="Phone Number" class="input-field" required>
@@ -73,11 +74,6 @@
         now.setMinutes(now.getMinutes() - now.getTimezoneOffset());
         document.getElementById('issueDate').value = now.toISOString().slice(0, 16);
 
-        document.getElementById('notNowBtn').addEventListener('click', () => {
-            localStorage.setItem('vip_reminder_active', 'true');
-            localStorage.setItem('vip_timer_start', Date.now());
-            window.location.href = 'dashboard.html';
-        });
         document.getElementById('notNow').addEventListener('click', () => {
             localStorage.setItem('vip_reminder_active', 'true');
             localStorage.setItem('vip_timer_start', Date.now());

@@ -202,6 +202,26 @@
             <div id="sharedFileList" style="margin-top:12px;"><p style="color:#999;">Loading...</p></div>
         </div>
 
+        <!-- ATTENDANCE SETTINGS -->
+        <div class="section" style="background:#fff; border:1px solid #e2e8f0;">
+            <h3 style="color:#2b6cb0;">⏱️ Reply Time Settings</h3>
+            <p style="font-size:13px; color:#718096;">How fast customers are told you will attend to their update.</p>
+            <div style="display:flex; gap:10px; margin-top:10px; flex-wrap:wrap; align-items:center;">
+                <label style="font-size:13px;">VIP: <input type="number" id="attendVip" min="1" max="10080" class="input-field" style="width:90px;"> min</label>
+                <label style="font-size:13px;">Normal: <input type="number" id="attendNormal" min="1" max="10080" class="input-field" style="width:90px;"> min</label>
+                <button class="btn btn-brand btn-small" onclick="saveAttendance()">💾 Save</button>
+            </div>
+            <p id="attendMsg" style="margin-top:8px;"></p>
+        </div>
+
+        <!-- SERVER ALERTS -->
+        <div class="section" style="background:#fff; border:1px solid #e2e8f0;">
+            <h3 style="color:#c53030;">🔔 Server Alerts (Email / SMS)</h3>
+            <p style="font-size:13px; color:#718096;">Get an email or SMS when orders arrive, even when your phone is locked. Set the env vars on Render first (SMTP_* or SMS_*), then test here.</p>
+            <button class="btn btn-accent btn-small" onclick="testServerAlert()">📨 Send Test Alert</button>
+            <p id="alertMsg" style="margin-top:8px;"></p>
+        </div>
+
         <!-- REVIEWS -->
         <div class="section section-reviews">
             <h3 style="color:#975a16;">�? Customer Reviews</h3>
@@ -931,6 +951,50 @@
             if (!confirm('Delete this shared file?')) return;
             await fetch(`${BACKEND_URL}/api/admin/shared-file/${fileId}?token=${encodeURIComponent(savedToken)}`, { method: 'DELETE' });
             loadSharedFiles();
+        }
+
+        // ----- ATTENDANCE SETTINGS -----
+        async function loadAttendance() {
+            try {
+                const res = await fetch(`${BACKEND_URL}/api/admin/attendance?token=${encodeURIComponent(savedToken)}`);
+                const data = await res.json();
+                document.getElementById('attendVip').value = data.vip_minutes;
+                document.getElementById('attendNormal').value = data.normal_minutes;
+            } catch (e) { /* ignore */ }
+        }
+
+        async function saveAttendance() {
+            const msg = document.getElementById('attendMsg');
+            const vip = parseInt(document.getElementById('attendVip').value, 10) || 5;
+            const normal = parseInt(document.getElementById('attendNormal').value, 10) || 10;
+            msg.innerText = 'Saving...';
+            try {
+                const res = await fetch(`${BACKEND_URL}/api/admin/attendance?token=${encodeURIComponent(savedToken)}`, {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ vip_minutes: vip, normal_minutes: normal }),
+                });
+                const data = await res.json();
+                msg.style.color = '#2f855a';
+                msg.innerText = '✅ ' + data.message;
+            } catch (e) {
+                msg.style.color = '#c53030';
+                msg.innerText = 'Cannot reach server.';
+            }
+        }
+
+        // ----- SERVER ALERTS -----
+        async function testServerAlert() {
+            const msg = document.getElementById('alertMsg');
+            msg.innerText = 'Sending...';
+            try {
+                const res = await fetch(`${BACKEND_URL}/api/admin/test-alert?token=${encodeURIComponent(savedToken)}`, { method: 'POST' });
+                const data = await res.json();
+                msg.style.color = res.ok ? '#2f855a' : '#c53030';
+                msg.innerText = data.message;
+            } catch (e) {
+                msg.style.color = '#c53030';
+                msg.innerText = 'Cannot reach server.';
+            }
         }
 
         // ----- INIT -----

@@ -182,6 +182,8 @@ def init_db():
         uploaded_by TEXT, uploaded_at TEXT)""")
     cursor.execute("CREATE TABLE IF NOT EXISTS payment_settings (method TEXT PRIMARY KEY, enabled INTEGER DEFAULT 1)")
     cursor.execute("INSERT OR IGNORE INTO admin_settings (key, value) VALUES ('test_mode', '0')")
+    cursor.execute("INSERT OR IGNORE INTO admin_settings (key, value) VALUES ('attendance_vip_minutes', '5')")
+    cursor.execute("INSERT OR IGNORE INTO admin_settings (key, value) VALUES ('attendance_normal_minutes', '10')")
     conn.commit()
     conn.close()
 
@@ -443,12 +445,27 @@ def checkout_live():
     params = data.get('params') or {}
     file_id = data.get('file_id') or ''
     ref = data.get('paystack_ref') or ''
-    skip_payment = str(request.headers.get('X-Test-Mode', '0')) == '1' or request.args.get('test') == '1'
+    skip_payment = str(request.headers.get('X-Test-Mode', '0')) == '1' or request.args.get('test') == '1' or is_test_mode()
     if not username or not job_type or not ref:
         return jsonify({"message": "Missing order details."}), 400
     actual = compute_job_price(job_type, params)
     if actual is None:
         return jsonify({"message": "Invalid job parameters supplied."}), 400
+    if negotiation_blocked(username, job_type):
+        return jsonify({"message": "A price decision is awaited. Please wait for the admin's answer."}), 409
+    # If a negotiation was answered for this exact job, use the negotiated price
+    conn = get_conn()
+    nrow = conn.execute("""SELECT negotiation FROM transactions
+        WHERE username = ? AND job_type = ? AND status = 'Negotiation Pending'
+        ORDER BY id DESC LIMIT 1""", (username, job_type)).fetchone()
+    conn.close()
+    if nrow:
+        try:
+            ndata = json.loads(nrow[0] or '{}')
+        except ValueError:
+            ndata = {}
+        if ndata.get('last_price') is not None:
+            actual = float(ndata['last_price'])
     if not skip_payment:
         verified = paid_in_paystack(ref)
         if not verified:
@@ -461,10 +478,17 @@ def checkout_live():
     ts = now_str()
     create_txn(username, job_type, actual, vip_money, total,
               'Payment Confirmed / Approved for Production', ts, ref, file_id, 'paystack')
+    # Mark any negotiation draft for this job as completed
+    conn = get_conn()
+    conn.execute("""UPDATE transactions SET status = 'Negotiation Completed'
+        WHERE username = ? AND job_type = ? AND status = 'Negotiation Pending'""",
+        (username, job_type))
+    conn.commit()
+    conn.close()
     notify(username, 'order', 'Payment confirmed!',
-           f'{job_type} is confirmed. Total: â‚¦{total:,.2f}.')
+           f'{job_type} is confirmed. Total: ₦{total:,.2f}.')
     return jsonify({"redirect": "/dashboard.html?tab=transact",
-                   "message": f"Payment verified! Total: â‚¦{total:,.2f}."}), 200
+                   "message": f"Payment verified! Total: ₦{total:,.2f}."}), 200
 
 
 @app.route('/api/cash-order', methods=['POST'])
@@ -487,7 +511,7 @@ def cash_order():
     create_txn(username, job_type, actual, actual * vip_rate, total,
               'Cash Payment Pending Confirmation', ts, file_id=file_id, method='cash')
     notify(username, 'order', 'Cash order placed',
-           'Your order is awaiting admin confirmation. Total: â‚¦%.2f.' % total)
+           'Your order is awaiting admin confirmation. Total: ₦%.2f.' % total)
     return jsonify({"message": "Order placed! Awaiting admin confirmation.",
                   "redirect": "/dashboard.html?tab=transact"}), 200
 
@@ -606,7 +630,7 @@ def vip_checkout():
     conn.close()
     notify(username, 'card', 'VIP card active!',
            f'Your {tier} VIP card is now active. Card #{card_id}.')
-    return jsonify({"redirect": "/dashboard.html?tab=transact",
+    return jsonify({"redirect": "/dashboard.html?tab=transact", "card_id": card_id,
                    "message": f"VIP card #{card_id} is now active."}), 200
 
 
@@ -644,7 +668,8 @@ def vip_cash_order():
     conn.close()
     notify(username, 'card', 'VIP card active!',
            f'Your {tier} VIP card is now active. Card #{card_id} (awaiting payment).')
-    return jsonify({"message": "VIP card created! Awaiting admin confirmation."}), 200
+    return jsonify({"card_id": card_id,
+                   "message": "VIP card created! Awaiting admin confirmation."}), 200
 
 
 def next_sub_id():
@@ -667,6 +692,55 @@ def is_test_mode():
     row = conn.execute("SELECT value FROM admin_settings WHERE key = 'test_mode'").fetchone()
     conn.close()
     return row and row[0] == '1'
+
+
+def send_server_alert(title, body):
+    """Email/SMS alert to the admin. Needs env vars:
+       SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS, ALERT_EMAIL
+       SMS_API_KEY, SMS_SENDER, ALERT_PHONE"""
+    sent = False
+    smtp_host = os.environ.get("SMTP_HOST")
+    smtp_user = os.environ.get("SMTP_USER")
+    smtp_pass = os.environ.get("SMTP_PASS")
+    alert_email = os.environ.get("ALERT_EMAIL")
+    if smtp_host and smtp_user and alert_email:
+        try:
+            import smtplib
+            from email.mime.text import MIMEText
+            msg = MIMEText(body)
+            msg['Subject'] = title
+            msg['From'] = smtp_user
+            msg['To'] = alert_email
+            server = smtplib.SMTP(smtp_host, int(os.environ.get("SMTP_PORT", 587)))
+            server.starttls()
+            server.login(smtp_user, smtp_pass)
+            server.sendmail(smtp_user, [alert_email], msg.as_string())
+            server.quit()
+            sent = True
+        except Exception as exc:
+            print(f"EMAIL ALERT FAILED: {exc}")
+    sms_key = os.environ.get("SMS_API_KEY")
+    alert_phone = os.environ.get("ALERT_PHONE")
+    if sms_key and alert_phone:
+        try:
+            requests.post("https://api.termii.com/api/sms/send",
+                json={"api_key": sms_key, "to": alert_phone,
+                      "from": os.environ.get("SMS_SENDER") or "FodaKem",
+                      "sms": f"{title}: {body}", "type": "plain", "channel": "generic"},
+                timeout=15)
+            sent = True
+        except Exception as exc:
+            print(f"SMS ALERT FAILED: {exc}")
+    return sent
+
+
+@app.route('/api/admin/test-alert', methods=['POST'])
+def test_alert():
+    token = request.args.get('token') or request.headers.get('X-Admin-Token') or ''
+    if not admin_ok(token):
+        return jsonify({"message": "Unauthorized."}), 401
+    ok = send_server_alert("FodaKem VIP test alert", "This is a test alert from your admin panel.")
+    return jsonify({"message": "Alert sent!" if ok else "Alert not configured - set env vars on Render."}), 200
 
 
 @app.route('/api/negotiate', methods=['POST'])
@@ -700,9 +774,23 @@ def admin_set_price():
         return jsonify({"message": "Choose a new price (percent or amount)."}), 400
     conn = get_conn()
     cur = conn.cursor()
-    if data.get('txn_id'):
-        cur.execute("SELECT * FROM transactions WHERE id = ?", (data['txn_id'],))
-        rows = cur.fetchall()
+    target = data.get('txn_id')
+    if target is not None and str(target).strip() != '':
+        target = str(target).strip()
+        if target.isdigit():
+            cur.execute("SELECT * FROM transactions WHERE id = ?", (int(target),))
+            rows = cur.fetchall()
+        else:
+            # treat as username or nickname
+            conn2 = get_conn()
+            urow = conn2.execute("SELECT username FROM users WHERE username = ? OR nickname = ? COLLATE NOCASE",
+                                 (target.lower(), target)).fetchone()
+            conn2.close()
+            if not urow:
+                conn.close()
+                return jsonify({"message": "No such customer."}), 404
+            cur.execute("SELECT * FROM transactions WHERE username = ? ORDER BY id DESC", (urow[0],))
+            rows = cur.fetchall()
         if not rows:
             conn.close()
             return jsonify({"message": "Order not found."}), 404
@@ -718,8 +806,14 @@ def admin_set_price():
             new = value
         vip_money = float(txn['vip_money'] or 0)
         total = new * (1 + (vip_money / old if old else 0))
-        conn.execute("UPDATE transactions SET actual_price = ?, total_price = ? WHERE id = ?",
-                   (new, total, txn['id']))
+        try:
+            ndata = json.loads(txn['negotiation'] or '{}') or {}
+        except ValueError:
+            ndata = {}
+        ndata['last_price'] = new
+        ndata['closed'] = True
+        conn.execute("UPDATE transactions SET actual_price = ?, total_price = ?, negotiation = ? WHERE id = ?",
+                   (new, total, json.dumps(ndata), txn['id']))
     conn.commit()
     conn.close()
     return jsonify({"message": "Price updated."}), 200
@@ -761,6 +855,36 @@ def attendance_notice_text(username):
     return minutes
 
 
+@app.route('/api/admin/attendance', methods=['GET'])
+def admin_attendance_get():
+    token = request.args.get('token') or request.headers.get('X-Admin-Token') or ''
+    if not admin_ok(token):
+        return jsonify({"message": "Unauthorized."}), 401
+    conn = get_conn()
+    rows = dict(conn.execute("SELECT key, value FROM admin_settings WHERE key LIKE 'attendance_%'").fetchall())
+    conn.close()
+    return jsonify({
+        "vip_minutes": int(rows.get("attendance_vip_minutes", 5)),
+        "normal_minutes": int(rows.get("attendance_normal_minutes", 10)),
+    }), 200
+
+
+@app.route('/api/admin/attendance', methods=['POST'])
+def admin_attendance_post():
+    token = request.args.get('token') or request.headers.get('X-Admin-Token') or ''
+    if not admin_ok(token):
+        return jsonify({"message": "Unauthorized."}), 401
+    data = request.get_json(silent=True) or {}
+    vip = max(1, min(10080, int(data.get('vip_minutes') or 5)))
+    normal = max(1, min(10080, int(data.get('normal_minutes') or 10)))
+    conn = get_conn()
+    conn.execute("INSERT INTO admin_settings (key, value) VALUES ('attendance_vip_minutes', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value", (str(vip),))
+    conn.execute("INSERT INTO admin_settings (key, value) VALUES ('attendance_normal_minutes', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value", (str(normal),))
+    conn.commit()
+    conn.close()
+    return jsonify({"message": "Reply times updated."}), 200
+
+
 @app.route('/api/job-update', methods=['POST'])
 def create_job_update():
     data = request.get_json(silent=True) or {}
@@ -778,7 +902,11 @@ def create_job_update():
     else:
         vip = conn.execute("SELECT tier FROM vip_cards WHERE username = ? ORDER BY card_id DESC LIMIT 1",
                         (username,)).fetchone()
-        minutes = 5 if vip else 10
+        conn2 = get_conn()
+        vip_mins = conn2.execute("SELECT value FROM admin_settings WHERE key = 'attendance_vip_minutes'").fetchone()
+        normal_mins = conn2.execute("SELECT value FROM admin_settings WHERE key = 'attendance_normal_minutes'").fetchone()
+        conn2.close()
+        minutes = int(vip_mins[0] if vip_mins else 5) if vip else int(normal_mins[0] if normal_mins else 10)
         notice = f"We will attend to this in the next {minutes} minutes."
     conn.execute("""INSERT INTO job_updates (txn_id, username, text, source, status, created_at)
         VALUES (?,?,?,'customer','Pending',?)""",
