@@ -1671,20 +1671,27 @@ def build_card_slip_png(card_id, user, include_sub):
 
 @app.route('/api/card-slip/<card_id>', methods=['GET'])
 def serve_card_slip(card_id):
-    user = (request.args.get('user') or '').strip().lower()
+    raw_user = (request.args.get('user') or '').strip()
     include_sub = request.args.get('with_sub') in ('1', 'true', 'True')
-    if not user:
-        return jsonify({"message": "Login required."}), 401
+    if not raw_user:
+        return jsonify({"message": "Please sign in to download your card slip."}), 401
     conn = get_conn()
+    # Accept either the username or the nickname
+    urow = conn.execute("SELECT username FROM users WHERE username = ? OR nickname = ? COLLATE NOCASE",
+                        (raw_user.lower(), raw_user)).fetchone()
+    user = urow[0] if urow else raw_user.lower()
     card = conn.execute("SELECT username FROM vip_cards WHERE card_id = ?", (card_id,)).fetchone()
-    if not card or card[0] != user:
+    if not card:
         conn.close()
-        return jsonify({"message": "This card is not yours."}), 403
+        return jsonify({"message": "That card does not exist."}), 404
+    if (card[0] or '').strip().lower() != user:
+        conn.close()
+        return jsonify({"message": "This card belongs to another customer."}), 403
     txn = conn.execute("""SELECT status FROM transactions WHERE username = ? AND job_type LIKE 'VIP Card%'
         ORDER BY id DESC LIMIT 1""", (user,)).fetchone()
     conn.close()
     if txn and 'Pending' in str(txn[0]):
-        return jsonify({"message": "Payment not confirmed yet."}), 403
+        return jsonify({"message": "Your card payment is not confirmed yet. The admin must approve it before you can download the slip."}), 403
     img = build_card_slip_png(card_id, user, include_sub)
     if img is None:
         return jsonify({"message": "Cannot create the slip."}), 500

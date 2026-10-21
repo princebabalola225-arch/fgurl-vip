@@ -58,6 +58,12 @@
         const BACKEND_URL = window.location.origin;
         const TIER_PRICES = { blue: 1500, red: 3000, yellow: 4500, black: 6000 };
 
+        // You must be signed in so the card is linked to your account
+        if (!localStorage.getItem('active_user')) {
+            alert('Please sign in or create an account first.');
+            window.location.replace('VLAND.html');
+        }
+
         let paystackPublicKey = '';
         let paystackSubaccount = '';
 
@@ -131,7 +137,7 @@
         }
 
         // ----- DOWNLOAD SLIP (requires the payment to be confirmed) -----
-        function downloadVipSlip(withSub) {
+        async function downloadVipSlip(withSub) {
             const user = currentUser();
             const cardId = document.getElementById('currentCardId').value;
             if (!cardId) {
@@ -141,17 +147,32 @@
             const saveBtn = document.getElementById('saveBtn');
             saveBtn.disabled = true;
             saveBtn.innerHTML = '<span class="spinner"></span> Preparing...';
-            const url = `${BACKEND_URL}/api/card-slip/${cardId}?user=${encodeURIComponent(user)}&with_sub=${withSub ? 1 : 0}`;
-            const link = document.createElement('a');
-            link.href = url;
-            link.download = '';
-            document.body.appendChild(link);
-            link.click();
-            link.remove();
-            setTimeout(() => {
+            try {
+                const res = await fetch(`${BACKEND_URL}/api/card-slip/${cardId}?user=${encodeURIComponent(user)}&with_sub=${withSub ? 1 : 0}`);
+                if (!res.ok) {
+                    let msg = 'Could not download the slip.';
+                    try {
+                        const d = await res.json();
+                        if (d && d.message) { msg = d.message; }
+                    } catch (e) { /* not json */ }
+                    alert(msg);
+                    return;
+                }
+                const blob = await res.blob();
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `fodakem-slip-${cardId}.png`;
+                document.body.appendChild(a);
+                a.click();
+                a.remove();
+                URL.revokeObjectURL(url);
+            } catch (e) {
+                alert('Cannot reach the server. Please check your connection.');
+            } finally {
                 saveBtn.disabled = false;
                 saveBtn.innerHTML = 'Save Info & Purchase';
-            }, 1500);
+            }
         }
 
         async function payVipInCash() {
