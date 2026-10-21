@@ -610,13 +610,16 @@
         function renderCards(cards) {
             lastCardCount = cards.length;
             if (cards.length) {
-                let out = `<table><tr><th>Card</th><th>User</th><th>Name</th><th>Phone</th><th>Tier</th><th>Issued</th><th>QR</th></tr>`;
+                let out = `<table><tr><th>Card</th><th>User</th><th>Name</th><th>Phone</th><th>Tier</th><th>Issued</th><th>Actions</th></tr>`;
                 cards.forEach(c => {
                     out += `<tr>
                         <td><strong>#${String(c.card_id).padStart(3, '0')}</strong></td>
                         <td>${esc(c.username)}</td><td>${esc(c.name)}</td><td>${esc(c.phone)}</td>
                         <td>${esc(c.tier)}</td><td>${esc(c.issue_date)}</td>
-                        <td><a href="${BACKEND_URL}/api/vip-card-qr/${c.card_id}?token=${encodeURIComponent(savedToken)}" target="_blank">View QR</a></td>
+                        <td style="white-space:nowrap;">
+                            <a href="${BACKEND_URL}/api/vip-card-qr/${c.card_id}?token=${encodeURIComponent(savedToken)}" target="_blank" style="color:#553c9a; font-size:12px;">QR</a>
+                            <a href="${BACKEND_URL}/api/admin/card-info/${c.card_id}?token=${encodeURIComponent(savedToken)}" target="_blank" style="color:#2f855a; font-size:12px; margin-left:8px;">Download Info</a>
+                        </td>
                     </tr>`;
                 });
                 document.getElementById('cardTable').innerHTML = out + '</table>';

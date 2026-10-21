@@ -3,18 +3,24 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>VIP Card Center | FodaKem VIP</title>
+    <title>VIP Card & Sub Card | FodaKem VIP</title>
     <link rel="stylesheet" href="VLAND.css">
 </head>
 <body>
     <div class="container" style="max-width: 520px;">
         <div class="job-card" style="text-align: center;">
             <h1 style="color: var(--primary); font-size: 24px;">GET OUR VIP CARD &amp; SUB CARD</h1>
-            <p style="margin-bottom: 20px; font-weight: bold; color: #555;">GAIN ACCESS TO DISCOUNTS</p>
-            <p id="cardStatus" style="display:none; background:#f0fff4; border:1px solid #c6f6d5; color:#276749; font-size:13px; padding:10px; border-radius:8px; margin-bottom:12px; text-align:left;"></p>
+            <p style="margin-bottom: 10px; font-weight: bold; color: #555;">GAIN ACCESS TO DISCOUNTS</p>
+            <p style="background:#f0fff4; border:1px solid #c6f6d5; color:#276749; font-size:13px; padding:10px; border-radius:8px; margin-bottom:12px; text-align:left;">
+                You will be issued <strong>BOTH the VIP Card and the Sub Card at once</strong>.
+                The Sub Card gives you <strong>25% off every job</strong> and lasts as long as your VIP card.
+            </p>
+            <p style="font-size:15px; color:#2d3748; margin-bottom:15px;">
+                Total payable: <strong id="priceDisplay" style="color:#553c9a;">₦0</strong>
+                <span style="font-size:12px; color:#718096;">(VIP + ₦2,000 Sub Card − ₦500 bundle discount)</span>
+            </p>
 
             <form id="vipForm">
-                <input type="hidden" id="currentCardId" value="">
                 <input type="text" id="vipNickname" placeholder="Nickname (6+ letters, for login)" class="input-field" required>
                 <input type="text" id="vipName" placeholder="Full Name" class="input-field" required>
                 <input type="tel" id="vipPhone" placeholder="Phone Number" class="input-field" required>
@@ -24,7 +30,7 @@
                     <option value="Female">Female</option>
                 </select>
 
-                <select id="cardTier" class="input-field" required>
+                <select id="cardTier" class="input-field" required onchange="updatePrice()">
                     <option value="blue">Blue Tag (₦1,500 - 1 Month Validity)</option>
                     <option value="red">Red Tag (₦3,000 - 3 Months Validity)</option>
                     <option value="yellow">Yellow Tag (₦4,500 - 6 Months Validity)</option>
@@ -37,17 +43,27 @@
                 <label style="text-align: left; display: block; font-size: 14px; margin-bottom: 5px;">Upload Passport Photograph (Max 15MB)</label>
                 <input type="file" id="passportFile" accept="image/*" class="input-field" required>
 
-                <label style="text-align: left; display: block; font-size: 14px; margin-bottom: 5px;">Also purchase the Sub Card (₦2,000 - save ₦500 when bought together)</label>
-                <input type="checkbox" id="buySub" style="width:18px; height:18px; accent-color:#553c9a;">
-                <span style="font-size:13px; color:#718096;">The Sub Card gives 25% off every job and ends with your VIP card.</span>
+                <!-- Bank Transfer Section -->
+                <div id="transferSection" style="display:none; margin-top:15px; text-align:left;">
+                    <h3 style="color:#1a202c;">Pay via Bank Transfer</h3>
+                    <p style="font-size:13px; color:#718096;">Transfer the total to one of the accounts below, then enter the reference. The admin must approve your transfer before the card is active.</p>
+                    <label style="font-size:13px; font-weight:600; display:block; margin-top:10px;">Receiving account</label>
+                    <select id="transferAccount" class="input-field">
+                        <option value="">Select account...</option>
+                        <option value="moniepoint">Moniepoint - FODAKEM UNIQUE GLOBAL RESOURCES LIMITED (8308018146)</option>
+                        <option value="opay">Opay - FATORE OLADELE ADEBAYO (8065867966)</option>
+                        <option value="wema">Wema Bank - FATORE OLADELE ADEBAYO (0235640136)</option>
+                    </select>
+                    <label style="font-size:13px; font-weight:600; display:block; margin-top:10px;">Transfer reference / proof</label>
+                    <input type="text" id="transferRef" class="input-field" placeholder="e.g. transfer ID or reference">
+                    <button type="button" class="btn" style="background:#2f855a; color:white; margin-top:12px; width:100%;" onclick="payVipViaTransfer()">Submit for Admin Approval</button>
+                </div>
 
-                <div style="display:flex; gap:10px; margin-top:15px; flex-wrap:wrap; justify-content:center;">
-                    <button type="submit" id="saveBtn" class="btn">Save Info &amp; Purchase</button>
+                <div style="display:flex; gap:10px; margin-top:18px; flex-wrap:wrap; justify-content:center;">
+                    <button type="submit" id="saveBtn" class="btn">Save Info &amp; Purchase (Paystack)</button>
                     <button type="button" class="btn" style="background:#2d3748; color:white;" onclick="payVipInCash()">Pay in Cash</button>
-                    <button type="button" class="btn" style="background:#edf2f7; color:#4a5568;" onclick="saveCardInfoOnly()">Save Card Info</button>
-                    <button type="button" class="btn" style="background:#553c9a; color:white;" onclick="downloadVipSlip(false)">Download Card Slip</button>
-                    <button type="button" class="btn" style="background:#553c9a; color:white;" onclick="downloadVipSlip(true)">Download Slip with Sub Card</button>
-                    <button type="button" class="btn" style="background:#2d3748; color:white;" onclick="notNow()">Not Now</button>
+                    <button type="button" class="btn" style="background:#2b6cb0; color:white;" onclick="showTransferForm()">Pay via Bank Transfer</button>
+                    <button type="button" class="btn" style="background:#edf2f7; color:#4a5568;" onclick="notNow()">Not Now</button>
                 </div>
                 <p id="msg" class="message"></p>
             </form>
@@ -57,12 +73,24 @@
     <script>
         const BACKEND_URL = window.location.origin;
         const TIER_PRICES = { blue: 1500, red: 3000, yellow: 4500, black: 6000 };
+        const SUB_DISCOUNT = 1500; // Sub card ₦2,000 minus ₦500 bundle discount
 
         // You must be signed in so the card is linked to your account
         if (!localStorage.getItem('active_user')) {
             alert('Please sign in or create an account first.');
             window.location.replace('VLAND.html');
         }
+
+        function currentUser() {
+            return localStorage.getItem('active_user') || 'guest';
+        }
+
+        function updatePrice() {
+            const tier = document.getElementById('cardTier').value;
+            const total = (TIER_PRICES[tier] || 0) + SUB_DISCOUNT;
+            document.getElementById('priceDisplay').innerText = '₦' + total.toLocaleString();
+        }
+        updatePrice();
 
         let paystackPublicKey = '';
         let paystackSubaccount = '';
@@ -86,222 +114,136 @@
             localStorage.setItem('vip_timer_start', Date.now());
             window.location.href = 'dashboard.html';
         }
-        document.getElementById('notNow').addEventListener('click', notNow);
 
-        function currentUser() {
-            return localStorage.getItem('active_user') || 'guest';
+        function showTransferForm() {
+            const sec = document.getElementById('transferSection');
+            sec.style.display = sec.style.display === 'none' ? 'block' : 'none';
         }
 
-        // Load the customer's existing card so the download works on any visit
-        async function loadMyCards() {
-            try {
-                const res = await fetch(`${BACKEND_URL}/api/my-cards?user=${encodeURIComponent(currentUser())}`);
-                const data = await res.json();
-                if (data.vip && data.vip.card_id) {
-                    document.getElementById('currentCardId').value = data.vip.card_id;
-                    const status = document.getElementById('cardStatus');
-                    if (status) {
-                        status.style.display = 'block';
-                        status.innerHTML = `You already have <strong>VIP Card #${data.vip.card_id}</strong> (${data.vip.tier})` +
-                            (data.sub ? ` and <strong>Sub Card ${data.sub.sub_id}</strong>` : '') +
-                            `. Valid until ${data.vip.valid_until || '-'}.`;
-                    }
-                }
-            } catch (e) { /* ignore */ }
-        }
-        loadMyCards();
-
-        // ----- SAVE INFO (customer-side download of the card details) -----
-        function saveCardInfoOnly() {
-            const user = currentUser();
-            const tier = document.getElementById('cardTier').value;
-            const slip = [
-                'FodaKem VIP - CARD INFORMATION',
-                `Holder Name : ${document.getElementById('vipName').value}`,
-                `Sex         : ${document.getElementById('vipSex').value}`,
-                `Phone       : ${document.getElementById('vipPhone').value}`,
-                `Plan        : ${tier}`,
-                `Card ID     : pending (issued after payment)`,
-                `Valid Until : pending`,
-                `Sub Card    : ${document.getElementById('buySub').checked ? 'Yes' : 'No'}`,
-            ].join('\n');
-            const blob = new Blob([slip], { type: 'text/plain' });
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = 'fodakem-card-info.txt';
-            a.click();
-            URL.revokeObjectURL(url);
-            document.getElementById('msg').className = 'message success';
-            document.getElementById('msg').innerText = 'Card information saved.';
-        }
-
-        // ----- DOWNLOAD SLIP (requires the payment to be confirmed) -----
-        async function downloadVipSlip(withSub) {
-            const user = currentUser();
-            const cardId = document.getElementById('currentCardId').value;
-            if (!cardId) {
-                alert('You do not have a VIP card yet. Purchase one first, then download your slip.');
-                return;
-            }
-            const saveBtn = document.getElementById('saveBtn');
-            saveBtn.disabled = true;
-            saveBtn.innerHTML = '<span class="spinner"></span> Preparing...';
-            try {
-                const res = await fetch(`${BACKEND_URL}/api/card-slip/${cardId}?user=${encodeURIComponent(user)}&with_sub=${withSub ? 1 : 0}`);
-                if (!res.ok) {
-                    let msg = 'Could not download the slip.';
-                    try {
-                        const d = await res.json();
-                        if (d && d.message) { msg = d.message; }
-                    } catch (e) { /* not json */ }
-                    alert(msg);
-                    return;
-                }
-                const blob = await res.blob();
-                const url = URL.createObjectURL(blob);
-                const a = document.createElement('a');
-                a.href = url;
-                a.download = `fodakem-slip-${cardId}.png`;
-                document.body.appendChild(a);
-                a.click();
-                a.remove();
-                URL.revokeObjectURL(url);
-            } catch (e) {
-                alert('Cannot reach the server. Please check your connection.');
-            } finally {
-                saveBtn.disabled = false;
-                saveBtn.innerHTML = 'Save Info & Purchase';
-            }
-        }
-
-        async function payVipInCash() {
+        function readForm() {
             const fileInput = document.getElementById('passportFile');
             const msg = document.getElementById('msg');
-            const saveBtn = document.getElementById('saveBtn');
-            const tier = document.getElementById('cardTier').value;
             if (!fileInput.files[0]) {
-                msg.className = "message error";
-                msg.innerText = "Please upload your passport photograph.";
-                return;
+                msg.className = 'message error';
+                msg.innerText = 'Please upload your passport photograph.';
+                return null;
             }
             if (fileInput.files[0].size > 15 * 1024 * 1024) {
-                msg.className = "message error";
-                msg.innerText = "Error: File size limits exceeded (Max 15MB).";
-                return;
+                msg.className = 'message error';
+                msg.innerText = 'Error: File size limits exceeded (Max 15MB).';
+                return null;
             }
+            const tier = document.getElementById('cardTier').value;
             const formData = new FormData();
             formData.append('username', currentUser());
             formData.append('name', document.getElementById('vipName').value);
             formData.append('phone', document.getElementById('vipPhone').value);
             formData.append('sex', document.getElementById('vipSex').value);
             formData.append('tier', tier);
-            if (document.getElementById('buySub').checked) {
-                formData.append('buy_sub', '1');
-            }
             formData.append('issue_date', document.getElementById('issueDate').value);
             formData.append('passport', fileInput.files[0]);
+            return { formData, tier };
+        }
+
+        // ----- Pay in Cash -----
+        async function payVipInCash() {
+            const data = readForm();
+            if (!data) return;
+            const msg = document.getElementById('msg');
+            const saveBtn = document.getElementById('saveBtn');
+            data.formData.append('payment_method', 'cash');
             saveBtn.disabled = true;
             saveBtn.innerHTML = '<span class="spinner"></span> Processing...';
-            const response = await fetch(`${BACKEND_URL}/api/vip-cash-order`, {
-                method: 'POST',
-                body: formData,
-            });
-            const data = await response.json();
+            const response = await fetch(`${BACKEND_URL}/api/vip-cash-order`, { method: 'POST', body: data.formData });
+            const result = await response.json();
             if (response.ok) {
-                document.getElementById('currentCardId').value = data.card_id || '';
-                alert(data.message);
+                alert(result.message + '\n\nThe admin will confirm your cash payment. You will be notified.');
                 localStorage.setItem('vip_reminder_active', 'false');
                 window.location.href = 'dashboard.html';
             } else {
-                alert(data.message || "Could not process cash order.");
+                alert(result.message || 'Could not process cash order.');
                 saveBtn.disabled = false;
-                saveBtn.innerText = "Save Info & Purchase";
+                saveBtn.innerText = 'Save Info & Purchase (Paystack)';
             }
         }
 
+        // ----- Pay via Bank Transfer -----
+        async function payVipViaTransfer() {
+            const data = readForm();
+            if (!data) return;
+            const accountValue = document.getElementById('transferAccount').value;
+            const reference = document.getElementById('transferRef').value.trim();
+            if (!accountValue) { alert('Choose a receiving account.'); return; }
+            if (!reference) { alert('Enter the transfer reference.'); return; }
+            const accountNumbers = { moniepoint: '8308018146', opay: '8065867966', wema: '0235640136' };
+            const saveBtn = document.getElementById('saveBtn');
+            data.formData.append('payment_method', 'transfer');
+            data.formData.append('account', JSON.stringify({ number: accountNumbers[accountValue], reference }));
+            saveBtn.disabled = true;
+            saveBtn.innerHTML = '<span class="spinner"></span> Submitting...';
+            const response = await fetch(`${BACKEND_URL}/api/vip-cash-order`, { method: 'POST', body: data.formData });
+            const result = await response.json();
+            if (response.ok) {
+                alert(result.message + '\n\nThe admin will approve your transfer. You will be notified.');
+                localStorage.setItem('vip_reminder_active', 'false');
+                window.location.href = 'dashboard.html';
+            } else {
+                alert(result.message || 'Could not process transfer order.');
+                saveBtn.disabled = false;
+                saveBtn.innerText = 'Save Info & Purchase (Paystack)';
+            }
+        }
+
+        // ----- Paystack -----
         document.getElementById('vipForm').addEventListener('submit', async (e) => {
             e.preventDefault();
-            const fileInput = document.getElementById('passportFile');
+            const data = readForm();
+            if (!data) return;
             const msg = document.getElementById('msg');
             const saveBtn = document.getElementById('saveBtn');
-            const tier = document.getElementById('cardTier').value;
-            const buySubChecked = document.getElementById('buySub').checked;
-            // Charge for the Sub Card too (₦2,000 minus the ₦500 bundle discount)
-            const amount = TIER_PRICES[tier] + (buySubChecked ? 1500 : 0);
             if (!paystackPublicKey) {
-                msg.className = "message error";
-                msg.innerText = "Payment gateway is not ready. Please contact support.";
+                msg.className = 'message error';
+                msg.innerText = 'Payment gateway is not ready. Please contact support.';
                 return;
             }
-            if (fileInput.files[0].size > 15 * 1024 * 1024) {
-                msg.className = "message error";
-                msg.innerText = "Error: File size limits exceeded (Max 15MB).";
-                return;
-            }
+            const total = (TIER_PRICES[data.tier] || 0) + SUB_DISCOUNT;
             const activeUser = currentUser();
             saveBtn.disabled = true;
             saveBtn.innerHTML = '<span class="spinner"></span> Opening secure payment...';
             const setupConfig = {
                 key: paystackPublicKey,
                 email: `${activeUser}@FodaKemvip.com`,
-                amount: amount * 100,
+                amount: total * 100,
                 currency: 'NGN',
                 metadata: {
                     custom_fields: [
                         { display_name: "Customer Username", variable_name: "username", value: activeUser },
-                        { display_name: "VIP Tier", variable_name: "tier", value: tier },
-                        { display_name: "Buy Sub", variable_name: "buy_sub", value: document.getElementById('buySub').checked ? '1' : '0' },
+                        { display_name: "VIP Tier", variable_name: "tier", value: data.tier },
                     ]
                 },
-                callback: function (response) {
-                    finalizePurchase(response.reference);
-                },
+                callback: function (response) { finalizePurchase(response.reference, data); },
                 onClose: function () {
                     saveBtn.disabled = false;
-                    saveBtn.innerText = "Save Info & Purchase";
+                    saveBtn.innerText = 'Save Info & Purchase (Paystack)';
                 }
             };
-            if (paystackSubaccount) {
-                setupConfig.subaccount = paystackSubaccount;
-            }
+            if (paystackSubaccount) { setupConfig.subaccount = paystackSubaccount; }
             let handler = PaystackPop.setup(setupConfig);
             handler.openIframe();
 
-            async function finalizePurchase(paystack_ref) {
+            async function finalizePurchase(paystack_ref, formData) {
                 saveBtn.innerHTML = '<span class="spinner"></span> Verifying payment...';
-                if (!fileInput.files[0]) {
-                    alert('Please upload your passport photograph.');
-                    saveBtn.disabled = false;
-                    saveBtn.innerText = "Save Info & Purchase";
-                    return;
-                }
-                const formData = new FormData();
-                formData.append('username', activeUser);
-                formData.append('name', document.getElementById('vipName').value);
-                formData.append('phone', document.getElementById('vipPhone').value);
-                formData.append('sex', document.getElementById('vipSex').value);
-                formData.append('tier', tier);
-                if (document.getElementById('buySub').checked) {
-                    formData.append('buy_sub', '1');
-                }
-                formData.append('issue_date', document.getElementById('issueDate').value);
-                formData.append('paystack_ref', paystack_ref);
-                formData.append('passport', fileInput.files[0]);
-                const response = await fetch(`${BACKEND_URL}/api/vip-checkout`, {
-                    method: 'POST',
-                    body: formData,
-                });
-                const data = await response.json();
+                formData.formData.append('paystack_ref', paystack_ref);
+                const response = await fetch(`${BACKEND_URL}/api/vip-checkout`, { method: 'POST', body: formData.formData });
+                const result = await response.json();
                 if (response.ok) {
-                    document.getElementById('currentCardId').value = data.card_id || '';
-                    alert(data.message);
+                    alert(result.message + '\n\nYour card is active. The admin can now download it for printout.');
                     localStorage.setItem('vip_reminder_active', 'false');
-                    window.location.href = data.redirect || 'dashboard.html';
+                    window.location.href = 'dashboard.html';
                 } else {
-                    alert(data.message || "Payment could not be confirmed.");
+                    alert(result.message || 'Payment could not be confirmed.');
                     saveBtn.disabled = false;
-                    saveBtn.innerText = "Save Info & Purchase";
+                    saveBtn.innerText = 'Save Info & Purchase (Paystack)';
                 }
             }
         });

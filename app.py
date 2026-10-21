@@ -648,7 +648,7 @@ def vip_checkout():
     phone = form.get('phone') or ''
     sex = form.get('sex') or ''
     tier = form.get('tier') or ''
-    buy_sub = form.get('buy_sub') in ('1', 'true', 'True')
+    buy_sub = True  # both cards are mandatory together
     if tier not in VIP_TIER_PRICES:
         return jsonify({"message": "Invalid VIP tier."}), 400
     expected = VIP_TIER_PRICES[tier] + (SUB_CARD_PRICE - 500 if buy_sub else 0)
@@ -698,7 +698,8 @@ def vip_cash_order():
     phone = form.get('phone') or ''
     sex = form.get('sex') or ''
     tier = form.get('tier') or ''
-    buy_sub = form.get('buy_sub') in ('1', 'true', 'True')
+    buy_sub = True  # both cards are mandatory together
+    payment_method = (form.get('payment_method') or 'cash').strip().lower()
     if tier not in VIP_TIER_PRICES:
         return jsonify({"message": "Invalid VIP tier."}), 400
     expected = VIP_TIER_PRICES[tier] + (SUB_CARD_PRICE - 500 if buy_sub else 0)
@@ -725,9 +726,11 @@ def vip_cash_order():
     notify(username, 'card', 'VIP card active!',
            f'Your {tier} VIP card is now active. Card #{card_id} (awaiting payment).')
     # Record the VIP card purchase so the admin can see it
+    txn_status = 'Transfer Pending Approval' if payment_method == 'transfer' else 'Cash Payment Pending Confirmation'
     create_txn(username, f"VIP Card ({tier})", expected, 0.0, expected,
-              'Cash Payment Pending Confirmation', now_str(), '', '', 'cash')
-    send_server_alert('VIP card cash order', f'{username} created a {tier} VIP card (#{card_id}) - awaiting cash confirmation.')
+              txn_status, now_str(), '', '', payment_method)
+    send_server_alert('VIP card order',
+                      f'{username} registered a {tier} VIP + Sub card (#{card_id}) - {payment_method} pending.')
     return jsonify({"card_id": card_id,
                    "message": "VIP card created! Awaiting admin confirmation."}), 200
 
@@ -1292,11 +1295,13 @@ def admin_transactions():
     rows = conn.execute("""SELECT id, username, job_type, actual_price, vip_money,
         total_price, status, production_status, timestamp, method, notes, is_vip
         FROM transactions ORDER BY id DESC LIMIT 200""").fetchall()
-    cards = conn.execute("SELECT card_id, username, tier, valid_until FROM vip_cards ORDER BY card_id DESC").fetchall()
+    cards = conn.execute("""SELECT card_id, username, name, phone, tier, issue_date, valid_until
+        FROM vip_cards ORDER BY card_id DESC""").fetchall()
     conn.close()
     return jsonify({"transactions": [dict(zip(['id', 'username', 'job_type', 'actual_price', 'vip_money',
         'total_price', 'status', 'production_status', 'timestamp', 'method', 'notes', 'is_vip'], r)) for r in rows],
-                   "vip_cards": [dict(zip(['card_id', 'username', 'tier', 'valid_until'], r)) for r in cards]}), 200
+                   "vip_cards": [dict(zip(['card_id', 'username', 'name', 'phone', 'tier',
+                       'issue_date', 'valid_until'], r)) for r in cards]}), 200
 
 
 @app.route('/api/admin/stats', methods=['GET'])
@@ -1586,6 +1591,47 @@ def get_transaction(txn_id):
     keys = ['id', 'username', 'job_type', 'actual_price', 'vip_money', 'total_price',
             'status', 'production_status', 'timestamp']
     return jsonify(dict(zip(keys, row))), 200
+
+
+@app.route('/api/admin/card-info/<card_id>', methods=['GET'])
+def admin_card_info(card_id):
+    """Admin downloads a customer's card information for printout (no template)."""
+    token = request.args.get('token') or request.headers.get('X-Admin-Token') or ''
+    if not admin_ok(token):
+        return jsonify({"message": "Unauthorized."}), 401
+    conn = get_conn()
+    card = conn.execute("""SELECT card_id, username, name, phone, sex, tier, issue_date, valid_until
+        FROM vip_cards WHERE card_id = ?""", (card_id,)).fetchone()
+    if not card:
+        conn.close()
+        return jsonify({"message": "Card not found."}), 404
+    sub = conn.execute("""SELECT sub_id, tag, registered_at, valid_until FROM sub_cards
+        WHERE vip_card_id = ? ORDER BY registered_at DESC LIMIT 1""", (card_id,)).fetchone()
+    conn.close()
+    lines = [
+        "==================================================",
+        "        FODAKEM VIP - CARD INFORMATION (PRINTOUT)  ",
+        "==================================================",
+        f"VIP Card No    : {card[0]}",
+        f"Holder Name    : {card[2] or '-'}",
+        f"Username       : {card[1]}",
+        f"Sex            : {card[4] or '-'}",
+        f"Phone          : {card[3] or '-'}",
+        f"Plan (Tag)     : {card[5]}",
+        f"Issue Date     : {card[6] or '-'}",
+        f"Valid Until    : {card[7] or '-'}",
+        "",
+        f"Sub Card No    : {sub[0] if sub else '-'}",
+        f"Sub Tag        : {sub[1] if sub else '-'}",
+        f"Sub Registered : {sub[2] if sub else '-'}",
+        f"Sub Valid Until: {sub[3] if sub else '-'}",
+        "",
+        "Sub Card usage: 2 per week (unused carries over).",
+        "The Sub Card expires together with the VIP card.",
+        "==================================================",
+    ]
+    return Response("\n".join(lines), mimetype="text/plain",
+                   headers={'Content-Disposition': f'attachment; filename="card-info-{card_id}.txt"'})
 
 
 @app.route('/api/my-cards', methods=['GET'])
