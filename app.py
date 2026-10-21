@@ -189,7 +189,7 @@ def init_db():
 
 
 def get_conn():
-    return sqlite3.connect(DATABASE_FILE)
+    return sqlite3.connect(DATABASE_FILE, timeout=15)
 
 
 def admin_ok(token):
@@ -206,6 +206,14 @@ def notify(username, kind, title, body):
                (username, kind, title, body, now_str()))
     conn.commit()
     conn.close()
+
+
+def notify_all(title, body):
+    conn = get_conn()
+    users = [r[0] for r in conn.execute("SELECT username FROM users").fetchall()]
+    conn.close()
+    for u in users:
+        notify(u, 'announcement', title, body)
 
 
 def compute_job_price(job_type, params):
@@ -358,6 +366,29 @@ def vip_active(username):
     return row is not None
 
 
+def sub_uses_left(username):
+    conn = get_conn()
+    row = conn.execute("SELECT uses_count, carry_count FROM sub_cards WHERE username = ? ORDER BY registered_at DESC LIMIT 1",
+                    (username,)).fetchone()
+    conn.close()
+    if not row:
+        return 0
+    return max(0, row[1] + SUBS_PER_WEEK - row[0])
+
+
+def consume_sub_use(username):
+    conn = get_conn()
+    row = conn.execute("SELECT sub_id FROM sub_cards WHERE username = ? ORDER BY registered_at DESC LIMIT 1",
+                    (username,)).fetchone()
+    if not row:
+        conn.close()
+        return False
+    conn.execute("UPDATE sub_cards SET uses_count = uses_count + 1 WHERE sub_id = ?", (row[0],))
+    conn.commit()
+    conn.close()
+    return True
+
+
 def negotiation_blocked(username, job_type):
     conn = get_conn()
     row = conn.execute("""SELECT negotiation FROM transactions
@@ -445,7 +476,8 @@ def checkout_live():
     params = data.get('params') or {}
     file_id = data.get('file_id') or ''
     ref = data.get('paystack_ref') or ''
-    skip_payment = str(request.headers.get('X-Test-Mode', '0')) == '1' or request.args.get('test') == '1' or is_test_mode()
+    skip_payment = (str(request.headers.get('X-Test-Mode', '0')) == '1' or request.args.get('test') == '1') and username == TEST_ACCOUNT['username']
+    skip_payment = skip_payment or skip_test_payment(username)
     if not username or not job_type or not ref:
         return jsonify({"message": "Missing order details."}), 400
     actual = compute_job_price(job_type, params)
@@ -473,11 +505,15 @@ def checkout_live():
         if int(verified.get('amount') or 0) + 50 < actual * 100:
             return jsonify({"message": "Underpayment detected."}), 400
     vip_rate = float(data.get('surcharge_rate') or 0)
+    if vip_rate < 0 and sub_uses_left(username) <= 0:
+        return jsonify({"message": "You have used all your Sub Card uses this week."}), 400
     vip_money = actual * vip_rate
     total = actual + vip_money
     ts = now_str()
     create_txn(username, job_type, actual, vip_money, total,
               'Payment Confirmed / Approved for Production', ts, ref, file_id, 'paystack')
+    if vip_rate < 0:
+        consume_sub_use(username)
     # Mark any negotiation draft for this job as completed
     conn = get_conn()
     conn.execute("""UPDATE transactions SET status = 'Negotiation Completed'
@@ -487,6 +523,7 @@ def checkout_live():
     conn.close()
     notify(username, 'order', 'Payment confirmed!',
            f'{job_type} is confirmed. Total: ₦{total:,.2f}.')
+    send_server_alert('New paid order', f'{username} paid for {job_type} (₦{total:,.2f}).')
     return jsonify({"redirect": "/dashboard.html?tab=transact",
                    "message": f"Payment verified! Total: ₦{total:,.2f}."}), 200
 
@@ -506,12 +543,17 @@ def cash_order():
     if negotiation_blocked(username, job_type):
         return jsonify({"message": "A price decision is awaited. Please wait for the admin's answer."}), 409
     vip_rate = float(data.get('surcharge_rate') or 0)
+    if vip_rate < 0 and sub_uses_left(username) <= 0:
+        return jsonify({"message": "You have used all your Sub Card uses this week."}), 400
     total = actual * (1 + vip_rate)
     ts = now_str()
     create_txn(username, job_type, actual, actual * vip_rate, total,
               'Cash Payment Pending Confirmation', ts, file_id=file_id, method='cash')
+    if vip_rate < 0:
+        consume_sub_use(username)
     notify(username, 'order', 'Cash order placed',
            'Your order is awaiting admin confirmation. Total: ₦%.2f.' % total)
+    send_server_alert('New cash order', f'{username} placed {job_type} (₦{total:,.2f}) - cash pending.')
     return jsonify({"message": "Order placed! Awaiting admin confirmation.",
                   "redirect": "/dashboard.html?tab=transact"}), 200
 
@@ -538,6 +580,8 @@ def transfer_order():
     if negotiation_blocked(username, job_type):
         return jsonify({"message": "A price decision is awaited. Please wait for the admin's answer."}), 409
     vip_rate = float(data.get('surcharge_rate') or 0)
+    if vip_rate < 0 and sub_uses_left(username) <= 0:
+        return jsonify({"message": "You have used all your Sub Card uses this week."}), 400
     total = actual * (1 + vip_rate)
     chosen = [a for a in TRANSFER_ACCOUNTS if a['number'] == str(account.get('number') or '')]
     if not chosen:
@@ -548,9 +592,11 @@ def transfer_order():
               production_status='Awaiting Production')
     conn = get_conn()
     conn.execute("UPDATE transactions SET notes = ? WHERE username = ? AND job_type = ? AND timestamp = ?",
-               (json.dumps({"account": chosen[0]['name']}), username, job_type, ts), username)
+               (json.dumps({"account": chosen[0]['name']}), username, job_type, ts))
     conn.commit()
     conn.close()
+    send_server_alert('New transfer order',
+                      f'{username} placed {job_type} via {chosen[0]["name"]} - awaiting approval.')
     return jsonify({"message": "Transfer order received. Awaiting admin approval.",
                    "redirect": "/dashboard.html?tab=transact"}), 200
 
@@ -563,10 +609,13 @@ def admin_approve_transfer():
     data = request.get_json(silent=True) or {}
     txn_id = data.get('id')
     conn = get_conn()
+    owner = conn.execute("SELECT username FROM transactions WHERE id = ?", (txn_id,)).fetchone()
     conn.execute("UPDATE transactions SET status = 'Awaiting Production' WHERE id = ? AND status = 'Transfer Pending Approval'",
                (txn_id,))
     conn.commit()
     conn.close()
+    if owner:
+        notify(owner[0], 'payment', 'Transfer approved', 'Your bank transfer was approved. Your order is now in production.')
     return jsonify({"message": "Transfer approved."}), 200
 
 
@@ -578,10 +627,13 @@ def admin_reject_transfer():
     data = request.get_json(silent=True) or {}
     txn_id = data.get('id')
     conn = get_conn()
+    owner = conn.execute("SELECT username FROM transactions WHERE id = ?", (txn_id,)).fetchone()
     conn.execute("UPDATE transactions SET status = 'Cancelled' WHERE id = ? AND status = 'Transfer Pending Approval'",
                (txn_id,))
     conn.commit()
     conn.close()
+    if owner:
+        notify(owner[0], 'payment', 'Transfer rejected', 'Your bank transfer was not approved. Please contact support.')
     return jsonify({"message": "Transfer rejected."}), 200
 
 def vip_tier_validity(tier):
@@ -603,7 +655,7 @@ def vip_checkout():
     ref = form.get('paystack_ref') or ''
     if not username or not ref:
         return jsonify({"message": "Missing details."}), 400
-    if not skip_test_payment():
+    if not skip_test_payment(username):
         verified = paid_in_paystack(ref)
         if not verified:
             return jsonify({"message": "Payment could not be verified."}), 400
@@ -630,6 +682,10 @@ def vip_checkout():
     conn.close()
     notify(username, 'card', 'VIP card active!',
            f'Your {tier} VIP card is now active. Card #{card_id}.')
+    # Record the VIP card purchase so the admin can see it
+    create_txn(username, f"VIP Card ({tier})", expected, 0.0, expected,
+              'Payment Confirmed / Approved for Production', now_str(), ref, '', 'paystack')
+    send_server_alert('VIP card purchased', f'{username} bought a {tier} VIP card (#{card_id}).')
     return jsonify({"redirect": "/dashboard.html?tab=transact", "card_id": card_id,
                    "message": f"VIP card #{card_id} is now active."}), 200
 
@@ -668,6 +724,10 @@ def vip_cash_order():
     conn.close()
     notify(username, 'card', 'VIP card active!',
            f'Your {tier} VIP card is now active. Card #{card_id} (awaiting payment).')
+    # Record the VIP card purchase so the admin can see it
+    create_txn(username, f"VIP Card ({tier})", expected, 0.0, expected,
+              'Cash Payment Pending Confirmation', now_str(), '', '', 'cash')
+    send_server_alert('VIP card cash order', f'{username} created a {tier} VIP card (#{card_id}) - awaiting cash confirmation.')
     return jsonify({"card_id": card_id,
                    "message": "VIP card created! Awaiting admin confirmation."}), 200
 
@@ -681,10 +741,9 @@ def next_sub_id():
     return f"PRY {count:04d}"
 
 
-def skip_test_payment():
-    if not is_test_mode():
-        return False
-    return True
+def skip_test_payment(username=''):
+    # Only the test account may skip payment, and only while test mode is ON
+    return bool(is_test_mode()) and (username or '').strip().lower() == TEST_ACCOUNT['username']
 
 
 def is_test_mode():
@@ -816,6 +875,10 @@ def admin_set_price():
                    (new, total, json.dumps(ndata), txn['id']))
     conn.commit()
     conn.close()
+    # Tell every affected customer immediately, with the reason
+    for u in {t['username'] for t in affected if t.get('username')}:
+        notify(u, 'price', 'Price update',
+               f'Your price was changed by {value:g}% . Reason: {reason}')
     return jsonify({"message": "Price updated."}), 200
 
 @app.route('/api/my-notifications', methods=['GET'])
@@ -911,9 +974,10 @@ def create_job_update():
     conn.execute("""INSERT INTO job_updates (txn_id, username, text, source, status, created_at)
         VALUES (?,?,?,'customer','Pending',?)""",
         (txn_id, username, text, now_str()))
+    conn.commit()
+    conn.close()
     notify(username, 'update', 'Update received',
            f'{notice} An admin will review it before it is published.')
-    conn.commit(); conn.close()
     return jsonify({"message": "Update sent for admin approval."}), 200
 
 
@@ -987,6 +1051,14 @@ def add_reaction():
         created_at = excluded.created_at""",
         (target_type, target_id, username, reaction, now_str()))
     conn.commit(); conn.close()
+    # Let the owner know a fellow customer reacted
+    if target_type == 'update':
+        conn2 = get_conn()
+        owner = conn2.execute("SELECT username FROM job_updates WHERE id = ?", (target_id,)).fetchone()
+        conn2.close()
+        if owner and owner[0] != username:
+            notify(owner[0], 'reaction', 'New reaction',
+                   f'{username} reacted {reaction} to your update.')
     return jsonify({"message": "Reaction recorded."}), 200
 
 
@@ -1027,6 +1099,9 @@ def admin_availability():
         ON CONFLICT(job_key) DO UPDATE SET available = excluded.available, reason = excluded.reason""",
         (job_key, 1 if data.get('available', True) else 0, data.get('reason') or ''))
     conn.commit(); conn.close()
+    if not data.get('available', True):
+        notify_all('Service temporarily unavailable',
+                   f'{job_key} is unavailable: {data.get("reason") or "no reason given"}')
     return jsonify({"message": "Availability updated."}), 200
 
 
@@ -1051,6 +1126,8 @@ def admin_announcements():
     conn.execute("""INSERT INTO announcements (file_id, file_name, description, created_at)
         VALUES (?,?,?,?)""", (file_id, name, description, now_str()))
     conn.commit(); conn.close()
+    # Let every customer know about the new update
+    notify_all('New update posted', description[:120])
     return jsonify({"message": "News posted."}), 200
 
 
@@ -1098,6 +1175,7 @@ def create_ticket():
     conn.execute("INSERT INTO tickets (username, message, created_at) VALUES (?,?,?)",
                (username, message, now_str()))
     conn.commit(); conn.close()
+    send_server_alert('New support message', f'{username}: {message[:120]}')
     return jsonify({"message": "Sent."}), 200
 
 
@@ -1150,6 +1228,7 @@ def create_review():
     conn.execute("INSERT INTO reviews (username, txn_id, rating, comment, created_at) VALUES (?,?,?,?,?)",
                (username, txn_id, rating, comment, now_str()))
     conn.commit(); conn.close()
+    send_server_alert('New customer review', f'{username} rated {rating}/5: {comment[:120]}')
     return jsonify({"message": "Thank you."}), 200
 
 
@@ -1159,6 +1238,20 @@ def get_reviews():
     rows = conn.execute("SELECT * FROM reviews ORDER BY id DESC LIMIT 20").fetchall()
     conn.commit(); conn.close()
     return jsonify([dict(zip(['id', 'username', 'txn_id', 'rating', 'comment', 'created_at'], r)) for r in rows]), 200
+
+
+@app.route('/api/upload-job-file', methods=['POST'])
+def upload_job_file():
+    """Customer uploads their design/artwork before paying."""
+    uploaded = request.files.get('file')
+    if not uploaded or not uploaded.filename:
+        return jsonify({"message": "No file selected."}), 400
+    file_id = uuid.uuid4().hex
+    os.makedirs(JOB_FILES_DIR, exist_ok=True)
+    safe_name = secure_filename(uploaded.filename) or "job_file"
+    stored_name = f"{file_id}_{safe_name}"
+    uploaded.save(os.path.join(JOB_FILES_DIR, stored_name))
+    return jsonify({"file_id": file_id, "file_name": safe_name}), 200
 
 
 @app.route('/api/job-file/<file_id>', methods=['GET'])
@@ -1181,10 +1274,13 @@ def admin_confirm_cash():
         return jsonify({"message": "Unauthorized."}), 401
     data = request.get_json(silent=True) or {}
     conn = get_conn()
+    owner = conn.execute("SELECT username FROM transactions WHERE id = ?", (data.get('id'),)).fetchone()
     conn.execute("""UPDATE transactions SET status = 'Cash Payment Confirmed / Approved for Production'
         WHERE id = ? AND status = 'Cash Payment Pending Confirmation'""",
         (data.get('id'),))
     conn.commit(); conn.close()
+    if owner:
+        notify(owner[0], 'payment', 'Payment confirmed', 'Your cash payment was confirmed. Your order is approved for production.')
     return jsonify({"message": "Confirmed."}), 200
 
 @app.route('/api/admin/transactions', methods=['GET'])
@@ -1258,8 +1354,11 @@ def admin_order_status():
     if status not in ("Awaiting Production", "In Production", "Ready for Pickup", "Completed", "Cancelled"):
         return jsonify({"message": "Invalid status."}), 400
     conn = get_conn()
+    owner = conn.execute("SELECT username FROM transactions WHERE id = ?", (data.get('id'),)).fetchone()
     conn.execute("UPDATE transactions SET production_status = ? WHERE id = ?", (status, data.get('id')))
     conn.commit(); conn.close()
+    if owner:
+        notify(owner[0], 'status', 'Order update', f'Your order is now: {status}')
     return jsonify({"message": "Status updated."}), 200
 
 
@@ -1318,11 +1417,27 @@ def serve_vip_qr(card_id):
     if len(card_id) != 3:
         return jsonify({"message": "Invalid card id."}), 400
     conn = get_conn()
-    row = conn.execute("SELECT qr_path FROM vip_cards WHERE card_id = ?", (card_id,)).fetchone()
+    row = conn.execute("SELECT qr_path, name, phone, sex, tier FROM vip_cards WHERE card_id = ?", (card_id,)).fetchone()
     conn.close()
     if not row:
         return jsonify({"message": "Not found."}), 404
-    return send_from_directory('.', row[0])
+    qr_path = row[0]
+    if not qr_path or not os.path.exists(qr_path):
+        # Generate the QR code on the fly if it is missing
+        qr_data = (f"FodaKem VIP CARD ID: {card_id}\nHolder: {row[1]}\n"
+                   f"Contact: {row[2]}\nGender: {row[3]}\nPlan: {row[4]}")
+        qr = qrcode.QRCode(version=1, box_size=10, border=5)
+        qr.add_data(qr_data)
+        qr.make(fit=True)
+        qr_img = qr.make_image(fill_color="black", back_color="white")
+        os.makedirs("uploads", exist_ok=True)
+        qr_path = f"uploads/{card_id}_qr.png"
+        qr_img.save(qr_path)
+        conn = get_conn()
+        conn.execute("UPDATE vip_cards SET qr_path = ? WHERE card_id = ?", (qr_path, card_id))
+        conn.commit()
+        conn.close()
+    return send_from_directory('.', qr_path)
 
 
 @app.route('/api/admin/reactions', methods=['GET'])
@@ -1331,11 +1446,12 @@ def admin_reactions():
     if not admin_ok(token):
         return jsonify({"message": "Unauthorized."}), 401
     conn = get_conn()
-    rows = conn.execute("SELECT target_type, target_id, reaction, COUNT(*) FROM reactions GROUP BY target_type, target_id, reaction").fetchall()
+    rows = conn.execute("""SELECT target_type, target_id, reaction, COUNT(*)
+        FROM reactions GROUP BY target_type, target_id, reaction""").fetchall()
     conn.commit(); conn.close()
-    out = {}
+    out = []
     for r in rows:
-        out.setdefault((r[0], r[1]), []).append(r[2])
+        out.append({"target_type": r[0], "target_id": r[1], "reaction": r[2], "count": r[3]})
     return jsonify(out), 200
 
 
@@ -1366,7 +1482,7 @@ def admin_users():
     return jsonify([{"username": r[0], "nickname": r[1], "logins": login_counts.get(r[0], 0)} for r in rows]), 200
 
 
-@app.route('/api/payment-methods', methods=['POST'])
+@app.route('/api/admin/payment-methods', methods=['POST'])
 def admin_payment_methods():
     token = request.args.get('token') or request.headers.get('X-Admin-Token') or ''
     if not admin_ok(token):
@@ -1448,6 +1564,46 @@ def download_shared_file(file_id):
     return jsonify({"message": "File not found."}), 404
 
 
+@app.route('/api/transactions', methods=['GET'])
+def get_transactions():
+    username = (request.args.get('user') or '').strip().lower()
+    conn = get_conn()
+    rows = conn.execute("""SELECT id, job_type, total_price, status, production_status, timestamp
+        FROM transactions WHERE username = ? ORDER BY id DESC""", (username,)).fetchall()
+    conn.close()
+    keys = ['id', 'job_type', 'total_price', 'status', 'production_status', 'timestamp']
+    return jsonify([dict(zip(keys, r)) for r in rows]), 200
+
+
+@app.route('/api/transaction/<int:txn_id>', methods=['GET'])
+def get_transaction(txn_id):
+    conn = get_conn()
+    row = conn.execute("""SELECT id, username, job_type, actual_price, vip_money, total_price,
+        status, production_status, timestamp FROM transactions WHERE id = ?""", (txn_id,)).fetchone()
+    conn.close()
+    if not row:
+        return jsonify({"message": "Not found."}), 404
+    keys = ['id', 'username', 'job_type', 'actual_price', 'vip_money', 'total_price',
+            'status', 'production_status', 'timestamp']
+    return jsonify(dict(zip(keys, row))), 200
+
+
+@app.route('/api/my-cards', methods=['GET'])
+def my_cards():
+    username = (request.args.get('user') or '').strip().lower()
+    conn = get_conn()
+    card = conn.execute("""SELECT card_id, tier, valid_until, name, sex FROM vip_cards
+        WHERE username = ? ORDER BY card_id DESC LIMIT 1""", (username,)).fetchone()
+    sub = conn.execute("""SELECT sub_id, tag, valid_until FROM sub_cards
+        WHERE username = ? ORDER BY registered_at DESC LIMIT 1""", (username,)).fetchone()
+    conn.close()
+    return jsonify({
+        "vip": {"card_id": card[0], "tier": card[1], "valid_until": card[2],
+                "name": card[3], "sex": card[4]} if card else None,
+        "sub": {"sub_id": sub[0], "tag": sub[1], "valid_until": sub[2]} if sub else None,
+    }), 200
+
+
 @app.route('/api/my-sub', methods=['GET'])
 def my_sub():
     username = (request.args.get('user') or '').strip().lower()
@@ -1457,9 +1613,8 @@ def my_sub():
     if not row:
         return jsonify({"has_sub": False}), 200
     sub_id, tag, valid_until = row
-    uses_row = conn.execute("SELECT uses_count FROM sub_cards WHERE sub_id = ?", (sub_id,)).fetchone()
+    left = sub_uses_left(username)
     conn.close()
-    left = max(0, SUBS_PER_WEEK - (uses_row[0] if uses_row else 0))
     return jsonify({"has_sub": True, "tag": tag, "valid_until": valid_until,
                    "uses_left": left}), 200
 
@@ -1553,6 +1708,10 @@ def serve_static(filename):
 
 
 init_db()
+# Make sure every upload folder exists before serving
+os.makedirs(JOB_FILES_DIR, exist_ok=True)
+os.makedirs(ANNOUNCEMENTS_DIR, exist_ok=True)
+os.makedirs(SHARED_FILES_DIR, exist_ok=True)
 
 if __name__ == '__main__':
     debug_mode = os.environ.get("FLASK_DEBUG", "0") == "1"

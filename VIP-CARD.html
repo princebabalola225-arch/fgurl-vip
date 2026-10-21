@@ -11,6 +11,7 @@
         <div class="job-card" style="text-align: center;">
             <h1 style="color: var(--primary); font-size: 24px;">GET OUR VIP CARD &amp; SUB CARD</h1>
             <p style="margin-bottom: 20px; font-weight: bold; color: #555;">GAIN ACCESS TO DISCOUNTS</p>
+            <p id="cardStatus" style="display:none; background:#f0fff4; border:1px solid #c6f6d5; color:#276749; font-size:13px; padding:10px; border-radius:8px; margin-bottom:12px; text-align:left;"></p>
 
             <form id="vipForm">
                 <input type="hidden" id="currentCardId" value="">
@@ -74,15 +75,35 @@
         now.setMinutes(now.getMinutes() - now.getTimezoneOffset());
         document.getElementById('issueDate').value = now.toISOString().slice(0, 16);
 
-        document.getElementById('notNow').addEventListener('click', () => {
+        function notNow() {
             localStorage.setItem('vip_reminder_active', 'true');
             localStorage.setItem('vip_timer_start', Date.now());
             window.location.href = 'dashboard.html';
-        });
+        }
+        document.getElementById('notNow').addEventListener('click', notNow);
 
         function currentUser() {
             return localStorage.getItem('active_user') || 'guest';
         }
+
+        // Load the customer's existing card so the download works on any visit
+        async function loadMyCards() {
+            try {
+                const res = await fetch(`${BACKEND_URL}/api/my-cards?user=${encodeURIComponent(currentUser())}`);
+                const data = await res.json();
+                if (data.vip && data.vip.card_id) {
+                    document.getElementById('currentCardId').value = data.vip.card_id;
+                    const status = document.getElementById('cardStatus');
+                    if (status) {
+                        status.style.display = 'block';
+                        status.innerHTML = `You already have <strong>VIP Card #${data.vip.card_id}</strong> (${data.vip.tier})` +
+                            (data.sub ? ` and <strong>Sub Card ${data.sub.sub_id}</strong>` : '') +
+                            `. Valid until ${data.vip.valid_until || '-'}.`;
+                    }
+                }
+            } catch (e) { /* ignore */ }
+        }
+        loadMyCards();
 
         // ----- SAVE INFO (customer-side download of the card details) -----
         function saveCardInfoOnly() {
@@ -112,20 +133,25 @@
         // ----- DOWNLOAD SLIP (requires the payment to be confirmed) -----
         function downloadVipSlip(withSub) {
             const user = currentUser();
-            const tier = document.getElementById('cardTier').value;
+            const cardId = document.getElementById('currentCardId').value;
+            if (!cardId) {
+                alert('You do not have a VIP card yet. Purchase one first, then download your slip.');
+                return;
+            }
             const saveBtn = document.getElementById('saveBtn');
             saveBtn.disabled = true;
             saveBtn.innerHTML = '<span class="spinner"></span> Preparing...';
-            const url = `${BACKEND_URL}/api/card-slip/${document.getElementById('currentCardId').value || '000'}` +
-                       `?user=${encodeURIComponent(user)}&with_sub=${withSub ? 1 : 0}`;
+            const url = `${BACKEND_URL}/api/card-slip/${cardId}?user=${encodeURIComponent(user)}&with_sub=${withSub ? 1 : 0}`;
             const link = document.createElement('a');
             link.href = url;
             link.download = '';
             document.body.appendChild(link);
             link.click();
             link.remove();
-            saveBtn.disabled = false;
-            saveBtn.innerHTML = 'Save Info & Purchase';
+            setTimeout(() => {
+                saveBtn.disabled = false;
+                saveBtn.innerHTML = 'Save Info & Purchase';
+            }, 1500);
         }
 
         async function payVipInCash() {
@@ -133,6 +159,11 @@
             const msg = document.getElementById('msg');
             const saveBtn = document.getElementById('saveBtn');
             const tier = document.getElementById('cardTier').value;
+            if (!fileInput.files[0]) {
+                msg.className = "message error";
+                msg.innerText = "Please upload your passport photograph.";
+                return;
+            }
             if (fileInput.files[0].size > 15 * 1024 * 1024) {
                 msg.className = "message error";
                 msg.innerText = "Error: File size limits exceeded (Max 15MB).";
@@ -174,7 +205,9 @@
             const msg = document.getElementById('msg');
             const saveBtn = document.getElementById('saveBtn');
             const tier = document.getElementById('cardTier').value;
-            const amount = TIER_PRICES[tier];
+            const buySubChecked = document.getElementById('buySub').checked;
+            // Charge for the Sub Card too (₦2,000 minus the ₦500 bundle discount)
+            const amount = TIER_PRICES[tier] + (buySubChecked ? 1500 : 0);
             if (!paystackPublicKey) {
                 msg.className = "message error";
                 msg.innerText = "Payment gateway is not ready. Please contact support.";
@@ -216,6 +249,12 @@
 
             async function finalizePurchase(paystack_ref) {
                 saveBtn.innerHTML = '<span class="spinner"></span> Verifying payment...';
+                if (!fileInput.files[0]) {
+                    alert('Please upload your passport photograph.');
+                    saveBtn.disabled = false;
+                    saveBtn.innerText = "Save Info & Purchase";
+                    return;
+                }
                 const formData = new FormData();
                 formData.append('username', activeUser);
                 formData.append('name', document.getElementById('vipName').value);

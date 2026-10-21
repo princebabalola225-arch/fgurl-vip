@@ -501,7 +501,16 @@
             buttons.forEach(id => {
                 const el = document.getElementById(id);
                 if (!el) return;
-                if (HAS_SUB) { el.value = '-0.25'; }
+                if (HAS_SUB) {
+                    // Make sure a discount option exists before selecting it
+                    if (!Array.from(el.options).some(o => o.value === '-0.25')) {
+                        const opt = document.createElement('option');
+                        opt.value = '-0.25';
+                        opt.text = 'Sub Card Discount (25% Off)';
+                        el.appendChild(opt);
+                    }
+                    el.value = '-0.25';
+                }
             });
         }
 
@@ -564,7 +573,7 @@
             const rate = DESIGN_RATES[design];
             // Price = (width x height in sq inches / 144) x rate per sq ft x copies
             const baseCost = (dims[0] * dims[1] / 144) * rate * copies;
-            const surchargeRate = IS_VIP ? 0.25 : 0;
+            const surchargeRate = HAS_SUB ? -0.25 : (IS_VIP ? 0.25 : 0);
             const vipCharge = baseCost * surchargeRate;
             const total = baseCost + vipCharge;
             document.getElementById('designOutput').innerHTML = `

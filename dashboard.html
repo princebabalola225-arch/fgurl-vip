@@ -210,7 +210,7 @@
             const res = await fetch(`${BACKEND_URL}/api/transactions?user=${encodeURIComponent(user)}`);
             if (!res.ok) { return; }
             const logs = await res.json();
-            let output = '<table><tr><th>Ref</th><th>Job</th><th>Total</th><th>Status</th><th>Production</th></tr>';
+            let output = '<table><tr><th>Ref</th><th>Job</th><th>Total</th><th>Status</th><th>Production</th><th>Action</th></tr>';
             logs.forEach(log => {
                 const ps = log.production_status || 'Awaiting Production';
                 const psColor = ps.includes('Completed') ? 'green' : ps.includes('Cancelled') ? '#c53030' : '#dd6b20';
@@ -220,7 +220,7 @@
                     <td>₦${Number(log.total_price || 0).toLocaleString()}</td>
                     <td style="color:${String(log.status).includes('Pending') ? '#c05621' : 'green'};">${esc(log.status)}</td>
                     <td style="color:${psColor}; font-weight:bold;">${esc(ps)}</td>
-                    ${ps === 'Completed' ? `<button class="btn btn-small" style="background:#553c9a; color:white; margin-left:8px;" onclick="openReview(${log.id})">⭐ Rate</button>` : ''}
+                    <td>${ps === 'Completed' ? `<button class="btn btn-small" style="background:#553c9a; color:white;" onclick="openReview(${log.id})">⭐ Rate</button>` : ''}</td>
                 </tr>`;
             });
             document.getElementById('historyLog').innerHTML = logs.length ? output + '</table>' : '<p>No orders yet.</p>';
@@ -262,6 +262,19 @@
             alert(data.message);
             textInput.value = '';
             loadJobUpdates();
+        }
+
+        // ----- REVIEWS -----
+        function openReview(txnId) {
+            const stars = prompt("Rate this order (1-5 stars):", "5");
+            const rating = parseInt(stars, 10);
+            if (!rating || rating < 1 || rating > 5) { alert("Please enter 1-5."); return; }
+            const comment = prompt("Short comment (optional):", "") || "Great service";
+            fetch(`${BACKEND_URL}/api/review`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ user: activeUser, txn_id: txnId, rating, comment }),
+            }).then(r => r.json()).then(d => { alert(d.message); });
         }
 
         // ----- SUPPORT TICKETS -----

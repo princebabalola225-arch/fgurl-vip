@@ -34,13 +34,13 @@
                 </select>
                 <label style="font-size:13px; font-weight:600; display:block; margin-top:10px;">Transfer reference / proof</label>
                 <input type="text" id="transferRef" class="input-field" placeholder="e.g. transfer ID or reference">
-                <button class="btn" style="background:#2f855a; color:white; margin-top:12px;" onclick="submitTransferOrder()">Submit for Admin Approval</button>
+                <button class="btn" style="background:#2f855a; color:white; margin-top:12px;" onclick="payInTransfer()">Submit for Admin Approval</button>
             </div>
 
             <!-- Paystack Gateway Button Trigger -->
             <button class="btn" style="background:#38a169;" id="paystackBtn" onclick="launchPaystackCheckout()">Securely Pay via Paystack Gateway</button>
             <button class="btn" style="background:#2d3748; color:white; margin-top:10px;" id="cashBtn" onclick="payInCash()">Pay in Cash</button>
-            <button class="btn" style="background:#2b6cb0; color:white; margin-top:10px;" id="transferBtn" onclick="payInTransfer()">Pay via Bank Transfer</button>
+            <button class="btn" style="background:#2b6cb0; color:white; margin-top:10px;" id="transferBtn" onclick="showTransferForm()">Pay via Bank Transfer</button>
             <button class="btn" style="background:#edf2f7; color:#4a5568; margin-top:10px;" onclick="window.location.href='jobs.html'">Cancel Order</button>
         </div>
     </div>
@@ -56,6 +56,9 @@
 
         const vipSurcharge = actual * surchargeRate;
         const totalPayable = actual + vipSurcharge;
+
+        // Raw job parameters (sent to the server to rebuild the order)
+        const checkoutParams = JSON.parse(localStorage.getItem('checkout_params') || '{}');
 
         document.getElementById('outJob').innerText = job || '...';
         document.getElementById('outActual').innerText = "₦" + actual.toLocaleString();
@@ -115,7 +118,7 @@
                         { display_name: "Job Type", variable_name: "job_type", value: job },
                         // Sent so the server can rebuild the order from a webhook
                         // even if the customer closes the browser
-                        { display_name: "Job Params", variable_name: "params", value: JSON.stringify(params) },
+                        { display_name: "Job Params", variable_name: "params", value: JSON.stringify(checkoutParams) },
                         { display_name: "Surcharge Rate", variable_name: "surcharge_rate", value: String(surchargeRate) },
                         { display_name: "Job File", variable_name: "file_id", value: localStorage.getItem('checkout_file_id') || '' }
                     ]
@@ -159,6 +162,11 @@
                 const data = await response.json().catch(() => ({}));
                 alert(data.message || 'Could not place cash order.');
             }
+        }
+
+        function showTransferForm() {
+            const sec = document.getElementById('transferSection');
+            sec.style.display = sec.style.display === 'none' ? 'block' : 'none';
         }
 
         async function payInTransfer() {
@@ -213,10 +221,11 @@
 
             if (response.ok) {
                 const data = await response.json();
-                alert(data.message + '\n\nYour receipt is ready.');
-                window.location.href = 'receipt.html?id=' + (await fetch(`${BACKEND_URL}/api/transactions?user=${encodeURIComponent(localStorage.getItem('active_user') || 'guest')}`).then(r => r.json()).then(l => l[0]?.id || 0));
+                alert(data.message);
+                window.location.href = data.redirect || 'dashboard.html?tab=transact';
             } else {
-                alert("Cloud database accounting synchronization failure.");
+                const data = await response.json().catch(() => ({}));
+                alert(data.message || 'Cloud database accounting synchronization failure.');
             }
         }
     </script>
