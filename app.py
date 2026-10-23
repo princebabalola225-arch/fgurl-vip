@@ -411,7 +411,7 @@ def start_negotiation_route():
     params = data.get('params') or {}
     notes = str(data.get('notes') or '')
     category = str(data.get('notes_category') or '')
-    surcharge_rate = float(data.get('surcharge_rate') or 0)
+    surcharge_rate = float(data.get('surcharge_rate') or 0.5)
     if not username or not job_type:
         return jsonify({"message": "Missing order details."}), 400
     actual = compute_job_price(job_type, params)
@@ -483,44 +483,18 @@ def checkout_live():
     actual = compute_job_price(job_type, params)
     if actual is None:
         return jsonify({"message": "Invalid job parameters supplied."}), 400
-    if negotiation_blocked(username, job_type):
-        return jsonify({"message": "A price decision is awaited. Please wait for the admin's answer."}), 409
-    # If a negotiation was answered for this exact job, use the negotiated price
-    conn = get_conn()
-    nrow = conn.execute("""SELECT negotiation FROM transactions
-        WHERE username = ? AND job_type = ? AND status = 'Negotiation Pending'
-        ORDER BY id DESC LIMIT 1""", (username, job_type)).fetchone()
-    conn.close()
-    if nrow:
-        try:
-            ndata = json.loads(nrow[0] or '{}')
-        except ValueError:
-            ndata = {}
-        if ndata.get('last_price') is not None:
-            actual = float(ndata['last_price'])
+    vip_rate = float(data.get('surcharge_rate') or 0.5)
     if not skip_payment:
         verified = paid_in_paystack(ref)
         if not verified:
             return jsonify({"message": "Payment could not be verified."}), 400
         if int(verified.get('amount') or 0) + 50 < actual * 100:
             return jsonify({"message": "Underpayment detected."}), 400
-    vip_rate = float(data.get('surcharge_rate') or 0)
-    if vip_rate < 0 and sub_uses_left(username) <= 0:
-        return jsonify({"message": "You have used all your Sub Card uses this week."}), 400
     vip_money = actual * vip_rate
     total = actual + vip_money
     ts = now_str()
     create_txn(username, job_type, actual, vip_money, total,
               'Payment Confirmed / Approved for Production', ts, ref, file_id, 'paystack')
-    if vip_rate < 0:
-        consume_sub_use(username)
-    # Mark any negotiation draft for this job as completed
-    conn = get_conn()
-    conn.execute("""UPDATE transactions SET status = 'Negotiation Completed'
-        WHERE username = ? AND job_type = ? AND status = 'Negotiation Pending'""",
-        (username, job_type))
-    conn.commit()
-    conn.close()
     notify(username, 'order', 'Payment confirmed!',
            f'{job_type} is confirmed. Total: ₦{total:,.2f}.')
     send_server_alert('New paid order', f'{username} paid for {job_type} (₦{total:,.2f}).')
@@ -540,9 +514,7 @@ def cash_order():
     actual = compute_job_price(job_type, params)
     if actual is None:
         return jsonify({"message": "Invalid job parameters supplied."}), 400
-    if negotiation_blocked(username, job_type):
-        return jsonify({"message": "A price decision is awaited. Please wait for the admin's answer."}), 409
-    vip_rate = float(data.get('surcharge_rate') or 0)
+    vip_rate = float(data.get('surcharge_rate') or 0.5)
     if vip_rate < 0 and sub_uses_left(username) <= 0:
         return jsonify({"message": "You have used all your Sub Card uses this week."}), 400
     total = actual * (1 + vip_rate)
@@ -577,9 +549,7 @@ def transfer_order():
     actual = compute_job_price(job_type, params)
     if actual is None:
         return jsonify({"message": "Invalid job parameters supplied."}), 400
-    if negotiation_blocked(username, job_type):
-        return jsonify({"message": "A price decision is awaited. Please wait for the admin's answer."}), 409
-    vip_rate = float(data.get('surcharge_rate') or 0)
+    vip_rate = float(data.get('surcharge_rate') or 0.5)
     if vip_rate < 0 and sub_uses_left(username) <= 0:
         return jsonify({"message": "You have used all your Sub Card uses this week."}), 400
     total = actual * (1 + vip_rate)
@@ -672,7 +642,7 @@ def vip_checkout():
         issue_date, valid_until, qr_path) VALUES (?,?,?,?,?,?,?,?,'')""",
         (card_id, username, name, phone, sex, tier, issued[:10], valid_until))
     if buy_sub:
-        sub_id = next_sub_id()
+        sub_id = next_sub_id(username)
         cur.execute("""INSERT INTO sub_cards
             (sub_id, username, vip_card_id, tag, registered_at, valid_until)
             VALUES (?,?,?,?,?,?)""",
@@ -735,13 +705,17 @@ def vip_cash_order():
                    "message": "VIP card created! Awaiting admin confirmation."}), 200
 
 
-def next_sub_id():
+def next_sub_id(username):
+    """Sub card number: first 3 letters of the nickname + sequence + SUB."""
     conn = get_conn()
     cur = conn.cursor()
+    cur.execute("SELECT nickname FROM users WHERE username = ?", (username,))
+    row = cur.fetchone()
     cur.execute("SELECT COUNT(*) FROM sub_cards")
     count = cur.fetchone()[0] + 1
     conn.close()
-    return f"PRY {count:04d}"
+    prefix = (row[0] or 'SUB')[:3].upper() if row else 'SUB'
+    return f"{prefix} {count:04d} SUB"
 
 
 def skip_test_payment(username=''):

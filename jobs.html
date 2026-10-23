@@ -43,7 +43,8 @@
                 </div>
                 <label style="font-size:14px; display:block; font-weight:600;">Production Urgency Tier</label>
                 <select id="stickUrgency" class="input-field">
-                    <option value="0.25">VIP Surcharge Processing </option>
+                    <option value="0.50">VIP Surcharge Processing (50%)</option>
+<option value="0.25">Sub Card Discount (25%)</option>
                     <option value="0.00">Standard Timeline Processing (No Extra Charge)</option>
                 </select>
                 <label style="font-size:12px; display:block; margin-top:10px; font-weight:600;">Number of Copies (Max 1,000,000)</label>
@@ -57,7 +58,7 @@
                     <option value="Other">Other</option>
                 </select>
                 <label style="font-size:12px; display:block; margin-top:10px; font-weight:600;">
-                    <input type="checkbox" id="stickNegotiate" style="width:16px; height:16px; accent-color:#553c9a;"> Request price negotiation before payment
+                    
                 </label>
                 <button class="btn" onclick="calculateStickerPrice()">Compute Production Cost</button>
                 <label style="font-size:12px; display:block; margin-top:10px; font-weight:600;">Upload Job File / Artwork (Optional)</label>
@@ -95,7 +96,7 @@
                     <option value="Other">Other</option>
                 </select>
                 <label style="font-size:12px; display:block; margin-top:10px; font-weight:600;">
-                    <input type="checkbox" id="flexNegotiate" style="width:16px; height:16px; accent-color:#553c9a;"> Request price negotiation before payment
+                    
                 </label>
                 <button class="btn" onclick="calculateFlexPrice()">Compute Flex Cost</button>
                 <label style="font-size:12px; display:block; margin-top:10px; font-weight:600;">Upload Job File / Artwork (Optional)</label>
@@ -117,7 +118,8 @@
                 <input type="number" id="mugCopies" value="1" min="1" max="1000000" class="input-field">
                 <label style="font-size:14px; display:block; font-weight:600; margin-top:10px;">Production Urgency Tier</label>
                 <select id="mugUrgency" class="input-field">
-                    <option value="0.25">VIP Surcharge Processing </option>
+                    <option value="0.50">VIP Surcharge Processing (50%)</option>
+<option value="0.25">Sub Card Discount (25%)</option>
                     <option value="0.00">Standard Timeline Processing (No Extra Charge)</option>
                 </select>
                 <label style="font-size:12px; display:block; margin-top:10px; font-weight:600;">Notes / Special Instructions (Optional)</label>
@@ -129,7 +131,7 @@
                     <option value="Other">Other</option>
                 </select>
                 <label style="font-size:12px; display:block; margin-top:10px; font-weight:600;">
-                    <input type="checkbox" id="mugNegotiate" style="width:16px; height:16px; accent-color:#553c9a;"> Request price negotiation before payment
+                    
                 </label>
                 <button class="btn" onclick="calculateMugPrice()">Compute Mug Cost</button>
                 <label style="font-size:12px; display:block; margin-top:10px; font-weight:600;">Upload Design / Artwork (Optional)</label>
@@ -149,7 +151,8 @@
                 <input type="number" id="fixedCopies" value="1" min="1" max="1000000" class="input-field">
                 <label style="font-size:14px; display:block; font-weight:600; margin-top:10px;">Production Urgency Tier</label>
                 <select id="fixedUrgency" class="input-field">
-                    <option value="0.25">VIP Surcharge Processing </option>
+                    <option value="0.50">VIP Surcharge Processing (50%)</option>
+<option value="0.25">Sub Card Discount (25%)</option>
                     <option value="0.00">Standard Timeline Processing (No Extra Charge)</option>
                 </select>
                 <label style="font-size:12px; display:block; margin-top:10px; font-weight:600;">Notes / Special Instructions (Optional)</label>
@@ -161,7 +164,7 @@
                     <option value="Other">Other</option>
                 </select>
                 <label style="font-size:12px; display:block; margin-top:10px; font-weight:600;">
-                    <input type="checkbox" id="fixedNegotiate" style="width:16px; height:16px; accent-color:#553c9a;"> Request price negotiation before payment
+                    
                 </label>
                 <button class="btn" onclick="calculateFixedPrice()">Compute Printout Cost</button>
                 <label style="font-size:12px; display:block; margin-top:10px; font-weight:600;">Upload Document (Optional)</label>
@@ -197,7 +200,8 @@
                 <input type="number" id="typingCopies" value="1" min="1" max="1000000" class="input-field">
                 <label style="font-size:14px; display:block; font-weight:600; margin-top:10px;">Production Urgency Tier</label>
                 <select id="typingUrgency" class="input-field">
-                    <option value="0.25">VIP Surcharge Processing </option>
+                    <option value="0.50">VIP Surcharge Processing (50%)</option>
+<option value="0.25">Sub Card Discount (25%)</option>
                     <option value="0.00">Standard Timeline Processing (No Extra Charge)</option>
                 </select>
                 <label style="font-size:12px; display:block; margin-top:10px; font-weight:600;">Notes / Special Instructions (Optional)</label>
@@ -209,7 +213,7 @@
                     <option value="Other">Other</option>
                 </select>
                 <label style="font-size:12px; display:block; margin-top:10px; font-weight:600;">
-                    <input type="checkbox" id="typingNegotiate" style="width:16px; height:16px; accent-color:#553c9a;"> Request price negotiation before payment
+                    
                 </label>
                 <button class="btn" onclick="calculateTypingPrice()">Compute Document Cost</button>
                 <label style="font-size:12px; display:block; margin-top:10px; font-weight:600;">Upload Document (Optional)</label>
@@ -248,7 +252,7 @@
                     <option value="Other">Other</option>
                 </select>
                 <label style="font-size:12px; display:block; margin-top:10px; font-weight:600;">
-                    <input type="checkbox" id="designNegotiate" style="width:16px; height:16px; accent-color:#553c9a;"> Request price negotiation before payment
+                    
                 </label>
                 <button class="btn" onclick="calculateDesignPrice()">Compute Design Cost</button>
                 <div id="designOutput" style="margin-top:15px; font-weight:bold;"></div>
@@ -290,8 +294,6 @@
             if (notesBox && notesBox.value.trim()) { params.notes = notesBox.value.trim(); }
             const catSelect = document.getElementById(prefix + 'NotesCat');
             if (catSelect && catSelect.value) { params.notes_category = catSelect.value; }
-            const negotiateBox = document.getElementById(prefix + 'Negotiate');
-            if (negotiateBox && negotiateBox.checked) { params.negotiate = 'yes'; }
             if (fileInput && fileInput.files && fileInput.files[0]) {
                 const formData = new FormData();
                 formData.append('file', fileInput.files[0]);
@@ -305,60 +307,12 @@
                     return;
                 }
             }
-            // If the customer asked for price negotiation, START it and wait for the admin
-            if (params.negotiate === 'yes') {
-                await startNegotiationFlow(jobType, actualPrice, surchargeRate, params, fileId);
-                return;
-            }
             localStorage.setItem('checkout_job', jobType);
             localStorage.setItem('checkout_actual_price', actualPrice);
             localStorage.setItem('checkout_surcharge_rate', surchargeRate);
             localStorage.setItem('checkout_params', JSON.stringify(params || {}));
             localStorage.setItem('checkout_file_id', fileId);
             window.location.href = 'payment.html';
-        }
-
-        async function startNegotiationFlow(jobType, actualPrice, surchargeRate, params, fileId) {
-            // Store everything the payment page needs once the price is decided
-            localStorage.setItem('checkout_job', jobType);
-            localStorage.setItem('checkout_actual_price', actualPrice);
-            localStorage.setItem('checkout_surcharge_rate', surchargeRate);
-            localStorage.setItem('checkout_params', JSON.stringify(params || {}));
-            localStorage.setItem('checkout_file_id', fileId);
-            const res = await fetch(`${BACKEND_URL}/api/start-negotiation`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    user: localStorage.getItem('active_user') || 'guest',
-                    job_type: jobType,
-                    surcharge_rate: surchargeRate,
-                    params,
-                    notes: params.notes || '',
-                    notes_category: params.notes_category || '',
-                    file_id: fileId,
-                }),
-            });
-            const data = await res.json();
-            if (!res.ok) { alert(data.message || 'Could not start negotiation.'); return; }
-            alert('Negotiation sent! The admin will set your price. We will continue to payment once it is ready.');
-            pollDraft(data.draft_id);
-        }
-
-        function pollDraft(draftId) {
-            const check = async () => {
-                try {
-                    const res = await fetch(`${BACKEND_URL}/api/draft-status/${draftId}`);
-                    const data = await res.json();
-                    if (data.status === 'answered') {
-                        alert(`Price decided: ₦${Number(data.last_price).toLocaleString()}. Going to payment...`);
-                        localStorage.setItem('checkout_actual_price', data.last_price);
-                        window.location.href = 'payment.html';
-                        return;
-                    }
-                } catch (e) { /* keep polling */ }
-                setTimeout(check, 5000);
-            };
-            check();
         }
 
         function calculateStickerPrice() {
@@ -475,7 +429,7 @@
                     // Auto-select VIP surcharge on all urgency dropdowns
                     ['stickUrgency', 'mugUrgency', 'fixedUrgency', 'typingUrgency'].forEach(id => {
                         const el = document.getElementById(id);
-                        if (el) el.value = '0.25';
+                        if (el) el.value = '0.50';
                     });
                 }
             } catch (e) { /* ignore */ }
@@ -509,7 +463,7 @@
                         opt.text = 'Sub Card Discount (25% Off)';
                         el.appendChild(opt);
                     }
-                    el.value = '-0.25';
+                    el.value = '0.25';
                 }
             });
         }
@@ -573,7 +527,7 @@
             const rate = DESIGN_RATES[design];
             // Price = (width x height in sq inches / 144) x rate per sq ft x copies
             const baseCost = (dims[0] * dims[1] / 144) * rate * copies;
-            const surchargeRate = HAS_SUB ? -0.25 : (IS_VIP ? 0.25 : 0);
+            const surchargeRate = HAS_SUB ? 0.25 : (IS_VIP ? 0.50 : 0);
             const vipCharge = baseCost * surchargeRate;
             const total = baseCost + vipCharge;
             document.getElementById('designOutput').innerHTML = `

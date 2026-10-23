@@ -157,7 +157,7 @@
             const response = await fetch(`${BACKEND_URL}/api/vip-cash-order`, { method: 'POST', body: data.formData });
             const result = await response.json();
             if (response.ok) {
-                alert(result.message + '\n\nThe admin will confirm your cash payment. You will be notified.');
+                alert(result.message + '\n\nPlease collect your VIP Card at the reception desk 25 minutes after purchase.');
                 localStorage.setItem('vip_reminder_active', 'false');
                 window.location.href = 'dashboard.html';
             } else {
@@ -184,7 +184,7 @@
             const response = await fetch(`${BACKEND_URL}/api/vip-cash-order`, { method: 'POST', body: data.formData });
             const result = await response.json();
             if (response.ok) {
-                alert(result.message + '\n\nThe admin will approve your transfer. You will be notified.');
+                alert(result.message + '\n\nPlease collect your VIP Card at the reception desk 25 minutes after purchase.');
                 localStorage.setItem('vip_reminder_active', 'false');
                 window.location.href = 'dashboard.html';
             } else {
@@ -237,7 +237,7 @@
                 const response = await fetch(`${BACKEND_URL}/api/vip-checkout`, { method: 'POST', body: formData.formData });
                 const result = await response.json();
                 if (response.ok) {
-                    alert(result.message + '\n\nYour card is active. The admin can now download it for printout.');
+                    alert(result.message + '\n\nPlease collect your VIP Card at the reception desk 25 minutes after purchase.');
                     localStorage.setItem('vip_reminder_active', 'false');
                     window.location.href = 'dashboard.html';
                 } else {
