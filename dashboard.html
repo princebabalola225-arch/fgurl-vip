@@ -34,6 +34,12 @@
             <div id="announcementsList"><p style="color:#999;">Loading updates...</p></div>
         </div>
 
+        <!-- NOTIFICATIONS -->
+        <div id="notificationsSection" style="margin-top:25px;">
+            <h2 style="font-size:20px; color:#1a202c; margin-bottom:15px;">𔔨 Notifications</h2>
+            <div id="notificationList"><p style="color:#999;">Loading notifications...</p></div>
+        </div>
+
         <div id="transactPanel" style="display: none;">
             <h1>My Transaction Records</h1>
             <div class="table-container" style="margin-top:20px;">
@@ -133,9 +139,20 @@
                     playBeep();
                     showToast('New notification', fresh[0].title + ' — ' + fresh[0].body);
                 }
-                document.getElementById('toastWrap').innerHTML = '';
+                // Render notification list
                 const list = document.getElementById('notificationList');
-                if (!list) { return; }
+                if (!list) return;
+                if (!items.length) {
+                    list.innerHTML = '<p style="color:#999;">No notifications yet.</p>';
+                    return;
+                }
+                list.innerHTML = items.map(n => `
+                    <div style="background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:12px;margin-bottom:10px;">
+                        <strong style="font-size:13px;color:#2d3748;">${esc(n.title)}</strong>
+                        <p style="font-size:13px;color:#555;margin:5px 0;">${esc(n.body)}</p>
+                        <p style="font-size:11px;color:#a0aec0;">${n.read ? 'Read' : 'Unread'} · ${n.created_at}</p>
+                    </div>
+                `).join('');
             } catch (e) { /* ignore */ }
         }
 
@@ -210,7 +227,7 @@
             const res = await fetch(`${BACKEND_URL}/api/transactions?user=${encodeURIComponent(user)}`);
             if (!res.ok) { return; }
             const logs = await res.json();
-            let output = '<table><tr><th>Ref</th><th>Job</th><th>Total</th><th>Status</th><th>Production</th><th>Action</th></tr>';
+            let output = '<table><tr><th>Ref</th><th>Job</th><th>Total</th><th>Status</th><th>Production</th><th>Action</th><th>Receipt</th></tr>';
             logs.forEach(log => {
                 const ps = log.production_status || 'Awaiting Production';
                 const psColor = ps.includes('Completed') ? 'green' : ps.includes('Cancelled') ? '#c53030' : '#dd6b20';
@@ -221,6 +238,7 @@
                     <td style="color:${String(log.status).includes('Pending') ? '#c05621' : 'green'};">${esc(log.status)}</td>
                     <td style="color:${psColor}; font-weight:bold;">${esc(ps)}</td>
                     <td>${ps === 'Completed' ? `<button class="btn btn-small" style="background:#553c9a; color:white;" onclick="openReview(${log.id})">⭐ Rate</button>` : ''}</td>
+                    <td><a href="receipt.html?id=${log.id}" class="btn btn-small" style="background:#2b6cb0; color:white; font-size:11px;" target="_blank">Receipt</a></td>
                 </tr>`;
             });
             document.getElementById('historyLog').innerHTML = logs.length ? output + '</table>' : '<p>No orders yet.</p>';

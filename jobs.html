@@ -43,9 +43,8 @@
                 </div>
                 <label style="font-size:14px; display:block; font-weight:600;">Production Urgency Tier</label>
                 <select id="stickUrgency" class="input-field">
-                    <option value="0.50">VIP Surcharge Processing (50%)</option>
-<option value="0.25">Sub Card Discount (25%)</option>
                     <option value="0.00">Standard Timeline Processing (No Extra Charge)</option>
+                    <option value="0.50">VIP Surcharge Processing (50%)</option>
                 </select>
                 <label style="font-size:12px; display:block; margin-top:10px; font-weight:600;">Number of Copies (Max 1,000,000)</label>
                 <input type="number" id="stickCopies" value="1" min="1" max="1000000" class="input-field" style="margin-top:5px;">
@@ -118,9 +117,8 @@
                 <input type="number" id="mugCopies" value="1" min="1" max="1000000" class="input-field">
                 <label style="font-size:14px; display:block; font-weight:600; margin-top:10px;">Production Urgency Tier</label>
                 <select id="mugUrgency" class="input-field">
-                    <option value="0.50">VIP Surcharge Processing (50%)</option>
-<option value="0.25">Sub Card Discount (25%)</option>
                     <option value="0.00">Standard Timeline Processing (No Extra Charge)</option>
+                    <option value="0.50">VIP Surcharge Processing (50%)</option>
                 </select>
                 <label style="font-size:12px; display:block; margin-top:10px; font-weight:600;">Notes / Special Instructions (Optional)</label>
                 <textarea id="mugNotes" rows="2" class="input-field" style="margin-top:5px;" placeholder="Tell us about your job (max 1000 words)"></textarea>
@@ -151,9 +149,8 @@
                 <input type="number" id="fixedCopies" value="1" min="1" max="1000000" class="input-field">
                 <label style="font-size:14px; display:block; font-weight:600; margin-top:10px;">Production Urgency Tier</label>
                 <select id="fixedUrgency" class="input-field">
-                    <option value="0.50">VIP Surcharge Processing (50%)</option>
-<option value="0.25">Sub Card Discount (25%)</option>
                     <option value="0.00">Standard Timeline Processing (No Extra Charge)</option>
+                    <option value="0.50">VIP Surcharge Processing (50%)</option>
                 </select>
                 <label style="font-size:12px; display:block; margin-top:10px; font-weight:600;">Notes / Special Instructions (Optional)</label>
                 <textarea id="fixedNotes" rows="2" class="input-field" style="margin-top:5px;" placeholder="Tell us about your job (max 1000 words)"></textarea>
@@ -200,9 +197,8 @@
                 <input type="number" id="typingCopies" value="1" min="1" max="1000000" class="input-field">
                 <label style="font-size:14px; display:block; font-weight:600; margin-top:10px;">Production Urgency Tier</label>
                 <select id="typingUrgency" class="input-field">
-                    <option value="0.50">VIP Surcharge Processing (50%)</option>
-<option value="0.25">Sub Card Discount (25%)</option>
                     <option value="0.00">Standard Timeline Processing (No Extra Charge)</option>
+                    <option value="0.50">VIP Surcharge Processing (50%)</option>
                 </select>
                 <label style="font-size:12px; display:block; margin-top:10px; font-weight:600;">Notes / Special Instructions (Optional)</label>
                 <textarea id="typingNotes" rows="2" class="input-field" style="margin-top:5px;" placeholder="Tell us about your job (max 1000 words)"></textarea>
@@ -312,6 +308,10 @@
             localStorage.setItem('checkout_surcharge_rate', surchargeRate);
             localStorage.setItem('checkout_params', JSON.stringify(params || {}));
             localStorage.setItem('checkout_file_id', fileId);
+            // Warn non-VIP customers using Standard Timeline
+            if (!IS_VIP && surchargeRate === 0) {
+                alert('You are using Standard Timeline. To avoid job delays, consider applying for our VIP Card at the VIP Card page.');
+            }
             window.location.href = 'payment.html';
         }
 
@@ -424,12 +424,51 @@
             try {
                 const res = await fetch(`${BACKEND_URL}/api/check-expiry?user=${encodeURIComponent(user)}`);
                 const data = await res.json();
+                const urgencyDropdowns = ['stickUrgency', 'mugUrgency', 'fixedUrgency', 'typingUrgency'];
                 if (data.has_card === true) {
                     IS_VIP = true;
-                    // Auto-select VIP surcharge on all urgency dropdowns
-                    ['stickUrgency', 'mugUrgency', 'fixedUrgency', 'typingUrgency'].forEach(id => {
+                    // VIP customer: VIP (50%) available, Standard locked
+                    urgencyDropdowns.forEach(id => {
                         const el = document.getElementById(id);
-                        if (el) el.value = '0.50';
+                        if (!el) return;
+                        el.disabled = false;
+                        // Ensure both options exist
+                        if (!Array.from(el.options).some(o => o.value === '0.50')) {
+                            const opt = document.createElement('option');
+                            opt.value = '0.50';
+                            opt.text = 'VIP Surcharge Processing (50%)';
+                            el.add(opt);
+                        }
+                        if (!Array.from(el.options).some(o => o.value === '0.00')) {
+                            const opt = document.createElement('option');
+                            opt.value = '0.00';
+                            opt.text = 'Standard Timeline Processing (No Extra Charge)';
+                            el.add(opt);
+                        }
+                        el.value = '0.50';
+                        // Lock Standard Timeline option for VIP
+                        Array.from(el.options).forEach(o => {
+                            if (o.value === '0.00') o.disabled = true;
+                        });
+                    });
+                } else {
+                    // Non-VIP: Only Standard available, VIP locked
+                    urgencyDropdowns.forEach(id => {
+                        const el = document.getElementById(id);
+                        if (!el) return;
+                        el.disabled = false;
+                        // Ensure Standard option exists
+                        if (!Array.from(el.options).some(o => o.value === '0.00')) {
+                            const opt = document.createElement('option');
+                            opt.value = '0.00';
+                            opt.text = 'Standard Timeline Processing (No Extra Charge)';
+                            el.add(opt);
+                        }
+                        // Remove VIP option if exists
+                        Array.from(el.options).forEach(o => {
+                            if (o.value === '0.50') o.disabled = true;
+                        });
+                        el.value = '0.00';
                     });
                 }
             } catch (e) { /* ignore */ }
@@ -526,8 +565,12 @@
             const dims = DESIGN_DIMS[size];
             const rate = DESIGN_RATES[design];
             // Price = (width x height in sq inches / 144) x rate per sq ft x copies
-            const baseCost = (dims[0] * dims[1] / 144) * rate * copies;
-            const surchargeRate = HAS_SUB ? 0.25 : (IS_VIP ? 0.50 : 0);
+            let baseCost = (dims[0] * dims[1] / 144) * rate * copies;
+            // Card printing: 10 cards per A4 sheet, minimum ₦600 even for 1 card
+            if (item === 'card' && copies < 10) {
+                baseCost = Math.max(baseCost, 600);
+            }
+            const surchargeRate = IS_VIP ? 0.50 : 0;  // Sub card discount removed, only VIP surcharge applies
             const vipCharge = baseCost * surchargeRate;
             const total = baseCost + vipCharge;
             document.getElementById('designOutput').innerHTML = `

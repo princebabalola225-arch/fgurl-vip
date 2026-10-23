@@ -242,7 +242,11 @@ def compute_job_price(job_type, params):
         if dims is None:
             return None
         rate = DESIGN_RATE_DESIGNED if params.get('design') == 'yes' else DESIGN_RATE_NOT_DESIGNED
-        return (dims[0] * dims[1] / 144) * rate * copies
+        price = (dims[0] * dims[1] / 144) * rate * copies
+        # Card printing: 10 cards per A4 sheet, minimum charge ₦600 even for 1 card
+        if copies < 10:
+            price = max(price, 600)
+        return price
     return None
 
 @app.route('/api/register', methods=['POST'])
@@ -770,7 +774,7 @@ def admin_set_price():
     # Tell every affected customer immediately, with the reason
     for u in {t['username'] for t in affected if t.get('username')}:
         notify(u, 'price', 'Price update',
-               f'Your price was changed by {value:g}% . Reason: {reason}')
+               f'Your job price was changed. Reason: {reason}')
     return jsonify({"message": "Price updated."}), 200
 
 @app.route('/api/my-notifications', methods=['GET'])
