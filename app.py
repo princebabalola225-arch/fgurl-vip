@@ -217,6 +217,7 @@ def notify_all(title, body):
 
 
 def compute_job_price(job_type, params):
+    params = params or {}
     copies = params.get('copies', 1)
     if not isinstance(copies, int) or copies < 1 or copies > 1000000:
         return None
@@ -387,71 +388,6 @@ def consume_sub_use(username):
     conn.commit()
     conn.close()
     return True
-
-
-def negotiation_blocked(username, job_type):
-    conn = get_conn()
-    row = conn.execute("""SELECT negotiation FROM transactions
-        WHERE username = ? AND job_type = ? AND status = 'Negotiation Pending'
-        ORDER BY id DESC LIMIT 1""", (username, job_type)).fetchone()
-    conn.close()
-    if not row:
-        return False
-    try:
-        data = json.loads(row[0] or '{}')
-    except ValueError:
-        return True
-    return data.get('last_price') is None
-
-
-def start_negotiation_route():
-    data = request.get_json(silent=True) or {}
-    username = (data.get('user') or '').strip().lower()
-    job_type = data.get('job_type') or ''
-    params = data.get('params') or {}
-    notes = str(data.get('notes') or '')
-    category = str(data.get('notes_category') or '')
-    surcharge_rate = float(data.get('surcharge_rate') or 0.5)
-    if not username or not job_type:
-        return jsonify({"message": "Missing order details."}), 400
-    actual = compute_job_price(job_type, params)
-    if actual is None:
-        return jsonify({"message": "Invalid job parameters supplied."}), 400
-    total = actual * (1 + surcharge_rate)
-    ts = now_str()
-    conn = get_conn()
-    conn.execute("""INSERT INTO transactions
-        (username, job_type, actual_price, vip_money, total_price, status,
-         production_status, timestamp, file_id, method, is_vip, negotiation)
-        VALUES (?,?,?,?,?,?,?,?,?,?,?,?)""",
-        (username, job_type, actual, actual * surcharge_rate, total,
-         'Negotiation Pending', 'Awaiting Production', ts, data.get('file_id') or '',
-         '', 0, json.dumps({"message": notes, "notes_category": category, "last_price": None})))
-    draft_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
-    conn.commit()
-    conn.close()
-    return jsonify({"draft_id": draft_id}), 200
-
-
-@app.route('/api/start-negotiation', methods=['POST'])
-def start_negotiation():
-    return start_negotiation_route()
-
-
-@app.route('/api/draft-status/<int:draft_id>', methods=['GET'])
-def draft_status(draft_id):
-    conn = get_conn()
-    row = conn.execute("SELECT negotiation FROM transactions WHERE id = ?", (draft_id,)).fetchone()
-    conn.close()
-    if not row:
-        return jsonify({"message": "Not found."}), 404
-    try:
-        data = json.loads(row[0] or '{}')
-    except ValueError:
-        data = {}
-    if data.get('last_price') is not None:
-        return jsonify({"status": "answered", "last_price": data['last_price']}), 200
-    return jsonify({"status": "pending"}), 200
 
 
 def create_txn(username, job_type, actual_price, vip_money, total_price, status, timestamp,
@@ -685,7 +621,7 @@ def vip_cash_order():
         (card_id, username, name, phone, sex, tier,
          datetime.datetime.now().strftime("%Y-%m-%d"), valid_until))
     if buy_sub:
-        sub_id = next_sub_id()
+        sub_id = next_sub_id(username)
         cur.execute("""INSERT INTO sub_cards
             (sub_id, username, vip_card_id, tag, registered_at, valid_until)
             VALUES (?,?,?,?,?,?)""",
@@ -779,21 +715,6 @@ def test_alert():
     return jsonify({"message": "Alert sent!" if ok else "Alert not configured - set env vars on Render."}), 200
 
 
-@app.route('/api/negotiate', methods=['POST'])
-def negotiate():
-    data = request.get_json(silent=True) or {}
-    username = (data.get('user') or '').strip().lower()
-    txn_id = data.get('txn_id')
-    message = (data.get('message') or '').strip()
-    if not username or not txn_id or not message:
-        return jsonify({"message": "Missing negotiation request."}), 400
-    conn = get_conn()
-    conn.execute("UPDATE transactions SET negotiation = ? WHERE id = ?",
-               (json.dumps({"message": message, "closed": False}), txn_id))
-    conn.commit()
-    conn.close()
-    return jsonify({"message": "Your request was received by the admin."}), 200
-
 
 @app.route('/api/admin/set-price', methods=['POST'])
 def admin_set_price():
@@ -842,14 +763,8 @@ def admin_set_price():
             new = value
         vip_money = float(txn['vip_money'] or 0)
         total = new * (1 + (vip_money / old if old else 0))
-        try:
-            ndata = json.loads(txn['negotiation'] or '{}') or {}
-        except ValueError:
-            ndata = {}
-        ndata['last_price'] = new
-        ndata['closed'] = True
-        conn.execute("UPDATE transactions SET actual_price = ?, total_price = ?, negotiation = ? WHERE id = ?",
-                   (new, total, json.dumps(ndata), txn['id']))
+        conn.execute("UPDATE transactions SET actual_price = ?, total_price = ? WHERE id = ?",
+                   (new, total, txn['id']))
     conn.commit()
     conn.close()
     # Tell every affected customer immediately, with the reason
